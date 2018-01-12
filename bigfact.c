@@ -21,9 +21,9 @@ BigInt* cloneBigInt(BigInt* num);
 void destroyBigInt(BigInt* num);
 void printBigInt(BigInt* num);
 
-BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp);  /* inplace */
-BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp);  /* inplace */
-BigInt* bint_divHalfWord(BigInt* lhs, unsigned long rhsVal, ull* rem);
+BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
+BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
+BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* rem);    /* inplace */
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs); /* inplace */
 BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
@@ -64,19 +64,17 @@ void destroyBigInt(BigInt* num) {
 }
 
 void printBigInt(BigInt* num) {
-    const uint DECIMAL_LENGTH = 9;
-    const ull  DECIMAL_SIZE   = 1e9;
-    uint decimalMaxExp = (uint) ((double) num->maxExp * LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 2;
+    const uint DECIMAL_LENGTH = 19;
+    const ull  DECIMAL_SIZE   = 1e19;
+    uint decimalMaxExp = (uint) ((double) num->maxExp * LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
 
-    unsigned long* decimalValues = malloc(sizeof(unsigned long) * (decimalMaxExp + 1));
+    ull* decimalValues = malloc(sizeof(ull) * (decimalMaxExp + 1));
 
     BigInt* runningDividend = cloneBigInt(num);
     for (uint i = 0; i <= decimalMaxExp; ++i) {
         ull rem;
-        BigInt* quot = bint_divHalfWord(runningDividend, DECIMAL_SIZE, &rem);
+        bint_divWord(runningDividend, DECIMAL_SIZE, &rem);
         decimalValues[i] = rem;
-        destroyBigInt(runningDividend);
-        runningDividend = quot;
 
         if (runningDividend->values[0] == 0 && runningDividend->maxExp == 0){
             decimalMaxExp = i;
@@ -88,7 +86,7 @@ void printBigInt(BigInt* num) {
     printf("%llu", decimalValues[decimalMaxExp]);
     for (uint i = decimalMaxExp; i != 0;) {
         --i;
-        printf("%09llu", decimalValues[i]);
+        printf("%019llu", decimalValues[i]);
     }
     printf("\n");
 
@@ -159,36 +157,36 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     return lhs;
 }
 
-BigInt* bint_divHalfWord(BigInt* lhs, unsigned long rhsVal, ull* rem) {
-    BigInt* quot = malloc(sizeof(BigInt));
-    quot->values = malloc(sizeof(ull) * (lhs->maxExp + 1));
-    quot->maxExp = lhs->maxExp;
+ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem) {
+    ull ret, rem;
+    asm ("movq %2, %%rdx;"
+         "movq %3, %%rax;"
+         "divq %4;"
+         "movq %%rax, %0;"
+         "movq %%rdx, %1;"
+         : "=r" (ret), "=r" (rem)
+         : "r" (lhsHi), "r" (lhsLo), "r" (rhs)
+         : "%rdx", "%rax"
+    );
+    if (_rem) *_rem = rem;
+    return ret;
+}
 
-    quot->values[quot->maxExp] = 0;
-
-    ull remainder = 0;
+BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
+    ull rem = 0;
     for (uint i = lhs->maxExp + 1; i != 0;) {
         --i;
 
-        ull dividend, quotient;
+        ull divHi = rem;
+        ull divLo = lhs->values[i];
 
-        dividend  = (remainder << HALF_LENGTH) + hi(lhs->values[i]);
-        quotient  = dividend / rhsVal;
-        remainder = dividend % rhsVal;
-
-        quotient <<= HALF_LENGTH;
-
-        dividend  = (remainder << HALF_LENGTH) + lo(lhs->values[i]);
-        quotient += dividend / rhsVal;
-        remainder = dividend % rhsVal;
-
-        quot->values[i] = quotient;
+        lhs->values[i] = bigDiv(divHi, divLo, rhsVal, &rem);
     }
 
-    while (quot->maxExp != 0 && quot->values[quot->maxExp] == 0) quot->maxExp -= 1;
+    while (lhs->maxExp != 0 && lhs->values[lhs->maxExp] == 0) lhs->maxExp -= 1;
 
-    if (rem) *rem = remainder;
-    return quot;
+    if (_rem) *_rem = rem;
+    return lhs;
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
