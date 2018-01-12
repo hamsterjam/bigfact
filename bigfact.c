@@ -115,18 +115,19 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     return lhs;
 }
 
-ull mulOverflow(ull a, ull b) {
-    ull overflow;
-    ull x;
+ull bigMul(ull lhs, ull rhs, ull* _over) {
+    ull ret, over;
+    asm ("movq %2, %%rax;"
+         "mulq %3;"
+         "movq %%rax, %0;"
+         "movq %%rdx, %1;"
+         : "=r" (ret), "=r" (over)
+         : "r"  (lhs), "r"  (rhs)
+         : "%rdx", "%rax"
+    );
 
-    x = lo(a) * lo(b);
-    x = lo(a) * hi(b) + hi(x);
-    overflow = hi(x);
-
-    x = hi(a) * lo(b) + lo(x);
-    overflow += hi(a) * hi(b) + hi(x);
-
-    return overflow;
+    if (_over) *_over = over;
+    return ret;
 }
 
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
@@ -141,12 +142,12 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     for (uint i = prodMaxExp - rhsExp; i != 0;) {
         --i;
         ull lhsVal = lhs->values[i];
-        ull prod   = lhsVal * rhsVal;
-        if (rhsVal != 0 && prod/rhsVal != lhsVal) {
+        ull over;
+        lhs->values[i+rhsExp] = bigMul(lhsVal, rhsVal, &over);
+        if (over != 0) {
             // Overflow
-            bint_addWord(lhs, mulOverflow(lhsVal, rhsVal), i+rhsExp+1);
+            bint_addWord(lhs, over, i+rhsExp+1);
         }
-        lhs->values[i+rhsExp] = prod;
     }
     for (uint i = 0; i < rhsExp; ++i) {
         lhs->values[i] = 0;
