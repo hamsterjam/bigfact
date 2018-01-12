@@ -21,12 +21,12 @@ BigInt* cloneBigInt(BigInt* num);
 void destroyBigInt(BigInt* num);
 void printBigInt(BigInt* num);
 
-BigInt* addBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp);  /* inplace */
-BigInt* mulBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp);  /* inplace */
-BigInt* divBigIntSingle(BigInt* lhs, unsigned long rhsVal, ull* rem);
+BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp);  /* inplace */
+BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp);  /* inplace */
+BigInt* bint_divHalfWord(BigInt* lhs, unsigned long rhsVal, ull* rem);
 
-BigInt* addBigInt(BigInt* lhs, BigInt* rhs); /* inplace */
-BigInt* mulBigInt(BigInt* lhs, BigInt* rhs, uint threads);
+BigInt* bint_add(BigInt* lhs, BigInt* rhs); /* inplace */
+BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
 
 ull hi(ull op) {
     return op >> HALF_LENGTH;
@@ -73,7 +73,7 @@ void printBigInt(BigInt* num) {
     BigInt* runningDividend = cloneBigInt(num);
     for (uint i = 0; i <= decimalMaxExp; ++i) {
         ull rem;
-        BigInt* quot = divBigIntSingle(runningDividend, DECIMAL_SIZE, &rem);
+        BigInt* quot = bint_divHalfWord(runningDividend, DECIMAL_SIZE, &rem);
         decimalValues[i] = rem;
         destroyBigInt(runningDividend);
         runningDividend = quot;
@@ -95,7 +95,7 @@ void printBigInt(BigInt* num) {
     free(decimalValues);
 }
 
-BigInt* addBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp) {
+BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     uint sumMaxExp = lhs->maxExp + 1;
     if (sumMaxExp < rhsExp) sumMaxExp = rhsExp;
     lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
@@ -117,7 +117,21 @@ BigInt* addBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp) {
     return lhs;
 }
 
-BigInt* mulBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp) {
+ull mulOverflow(ull a, ull b) {
+    ull overflow;
+    ull x;
+
+    x = lo(a) * lo(b);
+    x = lo(a) * hi(b) + hi(x);
+    overflow = hi(x);
+
+    x = hi(a) * lo(b) + lo(x);
+    overflow += hi(a) * hi(b) + hi(x);
+
+    return overflow;
+}
+
+BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     uint prodMaxExp = lhs->maxExp + rhsExp + 1;
     lhs->values = realloc(lhs->values, sizeof(ull) * (prodMaxExp + 1));
 
@@ -132,17 +146,7 @@ BigInt* mulBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp) {
         ull prod   = lhsVal * rhsVal;
         if (rhsVal != 0 && prod/rhsVal != lhsVal) {
             // Overflow
-            ull overflow;
-            ull x;
-
-            x = lo(lhsVal) * lo(rhsVal);
-            x = lo(lhsVal) * hi(rhsVal) + hi(x);
-            overflow = hi(x);
-
-            x = hi(lhsVal) * lo(rhsVal) + lo(x);
-            overflow += hi(lhsVal) * hi(rhsVal) + hi(x);
-
-            addBigIntSingle(lhs, overflow, i+rhsExp+1);
+            bint_addWord(lhs, mulOverflow(lhsVal, rhsVal), i+rhsExp+1);
         }
         lhs->values[i+rhsExp] = prod;
     }
@@ -155,7 +159,7 @@ BigInt* mulBigIntSingle(BigInt* lhs, ull rhsVal, uint rhsExp) {
     return lhs;
 }
 
-BigInt* divBigIntSingle(BigInt* lhs, unsigned long rhsVal, ull* rem) {
+BigInt* bint_divHalfWord(BigInt* lhs, unsigned long rhsVal, ull* rem) {
     BigInt* quot = malloc(sizeof(BigInt));
     quot->values = malloc(sizeof(ull) * (lhs->maxExp + 1));
     quot->maxExp = lhs->maxExp;
@@ -187,9 +191,9 @@ BigInt* divBigIntSingle(BigInt* lhs, unsigned long rhsVal, ull* rem) {
     return quot;
 }
 
-BigInt* addBigInt(BigInt* lhs, BigInt* rhs) {
+BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
     for (uint i = 0; i <= rhs->maxExp; ++i) {
-        addBigIntSingle(lhs, rhs->values[i], i);
+        bint_addWord(lhs, rhs->values[i], i);
     }
     return lhs;
 }
@@ -218,15 +222,15 @@ void* thread_partialMul(void* _info) {
 
     for (uint i = offset; i <= rhs->maxExp; i += threads) {
         BigInt* step = cloneBigInt(lhs);
-        mulBigIntSingle(step, rhs->values[i], i);
-        addBigInt(ret, step);
+        bint_mulWord(step, rhs->values[i], i);
+        bint_add(ret, step);
         destroyBigInt(step);
     }
 
     return (void*) ret;
 }
 
-BigInt* mulBigInt(BigInt* lhs, BigInt* rhs, uint threads) {
+BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
     pthread_t* threadPool = malloc(sizeof(pthread_t) * threads);
     for (int i = 0; i < threads; ++i) {
         thread_PartialMulInfo* info = malloc(sizeof(thread_PartialMulInfo));
@@ -245,7 +249,7 @@ BigInt* mulBigInt(BigInt* lhs, BigInt* rhs, uint threads) {
         BigInt* partial;
         pthread_join(threadPool[i], (void**) &partial);
 
-        addBigInt(ret, partial);
+        bint_add(ret, partial);
         destroyBigInt(partial);
     }
 
@@ -268,7 +272,7 @@ void* thread_partialFact(void* _info) {
 
     BigInt* ret = ull2BigInt(1);
     for (uint i = 1 + offset; i <= value; i += threads) {
-        mulBigIntSingle(ret, i, 0);
+        bint_mulWord(ret, i, 0);
     }
 
     return (void*) ret;
@@ -300,7 +304,7 @@ int main(int argc, char** argv) {
         BigInt* partial;
         pthread_join(threadPool[i], (void**) &partial);
 
-        BigInt* prod = mulBigInt(ret, partial, threads);
+        BigInt* prod = bint_mul(ret, partial, threads);
         destroyBigInt(ret);
         destroyBigInt(partial);
 
