@@ -40,6 +40,36 @@ ull lo(ull op) {
     return ((1L << HALF_LENGTH) - 1 & op);
 }
 
+ull bigMul(ull lhs, ull rhs, ull* _over) {
+    ull ret, over;
+    asm ("movq %2, %%rax;"
+         "mulq %3;"
+         "movq %%rax, %0;"
+         "movq %%rdx, %1;"
+         : "=r" (ret), "=r" (over)
+         : "r"  (lhs), "r"  (rhs)
+         : "%rdx", "%rax"
+    );
+
+    if (_over) *_over = over;
+    return ret;
+}
+
+ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem) {
+    ull ret, rem;
+    asm ("movq %2, %%rdx;"
+         "movq %3, %%rax;"
+         "divq %4;"
+         "movq %%rax, %0;"
+         "movq %%rdx, %1;"
+         : "=r" (ret),   "=r" (rem)
+         : "r"  (lhsHi), "r"  (lhsLo), "r" (rhs)
+         : "%rdx", "%rax"
+    );
+    if (_rem) *_rem = rem;
+    return ret;
+}
+
 BigInt* bint_fromWord(ull value) {
     BigInt* ret = malloc(sizeof(BigInt));
     ret->values = malloc(sizeof(ull));
@@ -115,21 +145,6 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     return lhs;
 }
 
-ull bigMul(ull lhs, ull rhs, ull* _over) {
-    ull ret, over;
-    asm ("movq %2, %%rax;"
-         "mulq %3;"
-         "movq %%rax, %0;"
-         "movq %%rdx, %1;"
-         : "=r" (ret), "=r" (over)
-         : "r"  (lhs), "r"  (rhs)
-         : "%rdx", "%rax"
-    );
-
-    if (_over) *_over = over;
-    return ret;
-}
-
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     uint prodMaxExp = lhs->maxExp + rhsExp + 1;
     lhs->values = realloc(lhs->values, sizeof(ull) * (prodMaxExp + 1));
@@ -157,21 +172,6 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     return lhs;
 }
 
-ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem) {
-    ull ret, rem;
-    asm ("movq %2, %%rdx;"
-         "movq %3, %%rax;"
-         "divq %4;"
-         "movq %%rax, %0;"
-         "movq %%rdx, %1;"
-         : "=r" (ret),   "=r" (rem)
-         : "r"  (lhsHi), "r"  (lhsLo), "r" (rhs)
-         : "%rdx", "%rax"
-    );
-    if (_rem) *_rem = rem;
-    return ret;
-}
-
 BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
     ull rem = 0;
     for (uint i = lhs->maxExp + 1; i != 0;) {
@@ -190,9 +190,32 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
-    for (uint i = 0; i <= rhs->maxExp; ++i) {
-        bint_addWord(lhs, rhs->values[i], i);
-    }
+    uint sumMaxExp = (lhs->maxExp > rhs->maxExp) ? lhs->maxExp : rhs->maxExp;
+    ++sumMaxExp;
+
+    lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
+    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * WORD_BYTES);
+
+    rhs->values = realloc(rhs->values, sizeof(ull) * (sumMaxExp + 1));
+    memset(rhs->values + rhs->maxExp + 1, 0, (sumMaxExp - rhs->maxExp) * WORD_BYTES);
+
+    ull loops = sumMaxExp + 1;
+    asm ("movq $0, %%rax;"
+         "movq %2, %%rcx;"
+         "clc;"
+         "bint_add_loop%=:"
+             "movq (%1, %%rax, 8), %%rbx;"
+             "adcq %%rbx, (%0, %%rax, 8);"
+             "incq %%rax;"
+         "loopq bint_add_loop%=;"
+         :
+         : "r" (lhs->values), "r" (rhs->values), "r" (loops)
+         : "%rax", "%rbx", "%rcx"
+        );
+
+    lhs->maxExp = sumMaxExp;
+    if (lhs->values[sumMaxExp] == 0) lhs->maxExp -= 1;
+
     return lhs;
 }
 
