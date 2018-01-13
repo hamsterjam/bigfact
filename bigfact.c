@@ -1,25 +1,29 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <math.h>
+#include <math.h>   // M_LN10, M_LN2
+#include <string.h> // memcpy, memset
 #include <pthread.h>
 
 typedef unsigned long long ull;
 typedef unsigned int uint;
 
-const uint LENGTH      = 64;
+const uint WORD_LENGTH = 64;
+const uint WORD_BYTES  = 8;
 const uint HALF_LENGTH = 32;
+const ull  HALF_SIZE   = 1L << 32;
 
-ull  HALF_SIZE  = 1L << 32;
+const uint DECIMAL_LENGTH = 19;
+const ull  DECIMAL_SIZE   = 1e19;
 
 typedef struct BigInt {
     ull* values;
     uint maxExp;
 } BigInt;
 
-BigInt* ull2BigInt(ull value);
-BigInt* cloneBigInt(BigInt* num);
-void destroyBigInt(BigInt* num);
-void printBigInt(BigInt* num);
+BigInt* bint_fromWord(ull value);
+BigInt* bint_clone(BigInt* num);
+void bint_destroy(BigInt* num);
+void bint_print(BigInt* num);
 
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
@@ -36,7 +40,7 @@ ull lo(ull op) {
     return ((1L << HALF_LENGTH) - 1 & op);
 }
 
-BigInt* ull2BigInt(ull value) {
+BigInt* bint_fromWord(ull value) {
     BigInt* ret = malloc(sizeof(BigInt));
     ret->values = malloc(sizeof(ull));
     ret->maxExp = 0;
@@ -46,31 +50,27 @@ BigInt* ull2BigInt(ull value) {
     return ret;
 }
 
-BigInt* cloneBigInt(BigInt* num) {
+BigInt* bint_clone(BigInt* num) {
     BigInt* ret = malloc(sizeof(BigInt));
     ret->values = malloc(sizeof(ull) * (num->maxExp + 1));
     ret->maxExp = num->maxExp;
 
-    for (uint i = 0; i<= num->maxExp; ++i) {
-        ret->values[i] = num->values[i];
-    }
+    memcpy(ret->values, num->values, sizeof(ull) * (num->maxExp + 1));
 
     return ret;
 }
 
-void destroyBigInt(BigInt* num) {
+void bint_destroy(BigInt* num) {
     free(num->values);
     free(num);
 }
 
-void printBigInt(BigInt* num) {
-    const uint DECIMAL_LENGTH = 19;
-    const ull  DECIMAL_SIZE   = 1e19;
-    uint decimalMaxExp = (uint) ((double) num->maxExp * LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
+void bint_print(BigInt* num) {
+    uint decimalMaxExp = (uint) ((double) num->maxExp * WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
 
     ull* decimalValues = malloc(sizeof(ull) * (decimalMaxExp + 1));
 
-    BigInt* runningDividend = cloneBigInt(num);
+    BigInt* runningDividend = bint_clone(num);
     for (uint i = 0; i <= decimalMaxExp; ++i) {
         ull rem;
         bint_divWord(runningDividend, DECIMAL_SIZE, &rem);
@@ -81,7 +81,7 @@ void printBigInt(BigInt* num) {
             break;
         }
     }
-    destroyBigInt(runningDividend);
+    bint_destroy(runningDividend);
 
     printf("%llu", decimalValues[decimalMaxExp]);
     for (uint i = decimalMaxExp; i != 0;) {
@@ -98,7 +98,7 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     if (sumMaxExp < rhsExp) sumMaxExp = rhsExp;
     lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
 
-    for (uint i = lhs->maxExp + 1; i <= sumMaxExp; ++i) lhs->values[i] = 0;
+    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * WORD_BYTES);
 
     lhs->values[rhsExp] += rhsVal;
     if (lhs->values[rhsExp] < rhsVal) {
@@ -134,9 +134,8 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     uint prodMaxExp = lhs->maxExp + rhsExp + 1;
     lhs->values = realloc(lhs->values, sizeof(ull) * (prodMaxExp + 1));
 
-    for (uint i = lhs->maxExp + 1; i <= prodMaxExp; ++i) {
-        lhs->values[i] = 0;
-    }
+    memset(lhs->values + lhs->maxExp + 1, 0, (prodMaxExp - lhs->maxExp) * WORD_BYTES);
+
     lhs->maxExp = prodMaxExp;
 
     for (uint i = prodMaxExp - rhsExp; i != 0;) {
@@ -165,8 +164,8 @@ ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem) {
          "divq %4;"
          "movq %%rax, %0;"
          "movq %%rdx, %1;"
-         : "=r" (ret), "=r" (rem)
-         : "r" (lhsHi), "r" (lhsLo), "r" (rhs)
+         : "=r" (ret),   "=r" (rem)
+         : "r"  (lhsHi), "r"  (lhsLo), "r" (rhs)
          : "%rdx", "%rax"
     );
     if (_rem) *_rem = rem;
@@ -220,10 +219,10 @@ void* thread_partialMul(void* _info) {
     ret->values[0] = 0;
 
     for (uint i = offset; i <= rhs->maxExp; i += threads) {
-        BigInt* step = cloneBigInt(lhs);
+        BigInt* step = bint_clone(lhs);
         bint_mulWord(step, rhs->values[i], i);
         bint_add(ret, step);
-        destroyBigInt(step);
+        bint_destroy(step);
     }
 
     return (void*) ret;
@@ -249,7 +248,7 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
         pthread_join(threadPool[i], (void**) &partial);
 
         bint_add(ret, partial);
-        destroyBigInt(partial);
+        bint_destroy(partial);
     }
 
     free(threadPool);
@@ -259,18 +258,18 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
 typedef struct thread_PartialFactInfo {
     uint threads;
     uint offset;
-    uint value;
+    uint operand;
 } thread_PartialFactInfo;
 
 void* thread_partialFact(void* _info) {
     thread_PartialFactInfo* info = (thread_PartialFactInfo*) _info;
     uint threads = info->threads;
     uint offset  = info->offset;
-    uint value   = info->value;
+    uint operand = info->operand;
     free(_info);
 
-    BigInt* ret = ull2BigInt(1);
-    for (uint i = 1 + offset; i <= value; i += threads) {
+    BigInt* ret = bint_fromWord(1);
+    for (uint i = 1 + offset; i <= operand; i += threads) {
         bint_mulWord(ret, i, 0);
     }
 
@@ -279,10 +278,11 @@ void* thread_partialFact(void* _info) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "Requires at least one argument\n");
+        fprintf(stderr, "Requires at least one argument.\n");
+        fprintf(stderr, "Format is: bigfact [operand] [thread count]\n");
         return 1;
     }
-    uint value = atoi(argv[1]);
+    uint operand = atoi(argv[1]);
     uint threads = 4;
     if (argc >= 3) threads = atoi(argv[2]);
 
@@ -291,7 +291,7 @@ int main(int argc, char** argv) {
         thread_PartialFactInfo* info = malloc(sizeof(thread_PartialFactInfo));
         info->threads = threads;
         info->offset  = i;
-        info->value   = value;
+        info->operand = operand;
 
         pthread_create(&threadPool[i], NULL, thread_partialFact, (void*) info);
     }
@@ -304,15 +304,15 @@ int main(int argc, char** argv) {
         pthread_join(threadPool[i], (void**) &partial);
 
         BigInt* prod = bint_mul(ret, partial, threads);
-        destroyBigInt(ret);
-        destroyBigInt(partial);
+        bint_destroy(ret);
+        bint_destroy(partial);
 
         ret = prod;
     }
 
-    printBigInt(ret);
+    bint_print(ret);
 
-    destroyBigInt(ret);
+    bint_destroy(ret);
     free(threadPool);
 
     return 0;
