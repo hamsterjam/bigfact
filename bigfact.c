@@ -8,7 +8,6 @@ typedef unsigned long long ull;
 typedef unsigned int uint;
 
 const uint WORD_LENGTH = 64;
-const uint WORD_BYTES  = 8;
 const uint HALF_LENGTH = 32;
 const ull  HALF_SIZE   = 1L << 32;
 
@@ -29,7 +28,8 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
 BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* rem);    /* inplace */
 
-BigInt* bint_add(BigInt* lhs, BigInt* rhs); /* inplace */
+BigInt* bint_add(BigInt* lhs, BigInt* rhs);                 /* inplace */
+BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* negative);  /* inplace */
 BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
 
 ull hi(ull op) {
@@ -128,7 +128,7 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     if (sumMaxExp < rhsExp) sumMaxExp = rhsExp;
     lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
 
-    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * WORD_BYTES);
+    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * sizeof(ull));
 
     lhs->values[rhsExp] += rhsVal;
     if (lhs->values[rhsExp] < rhsVal) {
@@ -149,7 +149,7 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     uint prodMaxExp = lhs->maxExp + rhsExp + 1;
     lhs->values = realloc(lhs->values, sizeof(ull) * (prodMaxExp + 1));
 
-    memset(lhs->values + lhs->maxExp + 1, 0, (prodMaxExp - lhs->maxExp) * WORD_BYTES);
+    memset(lhs->values + lhs->maxExp + 1, 0, (prodMaxExp - lhs->maxExp) * sizeof(ull));
 
     lhs->maxExp = prodMaxExp;
 
@@ -194,10 +194,10 @@ BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
     ++sumMaxExp;
 
     lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
-    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * WORD_BYTES);
+    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * sizeof(ull));
 
     rhs->values = realloc(rhs->values, sizeof(ull) * (sumMaxExp + 1));
-    memset(rhs->values + rhs->maxExp + 1, 0, (sumMaxExp - rhs->maxExp) * WORD_BYTES);
+    memset(rhs->values + rhs->maxExp + 1, 0, (sumMaxExp - rhs->maxExp) * sizeof(ull));
 
     ull loops = sumMaxExp + 1;
     asm ("movq $0, %%rax;"
@@ -216,6 +216,40 @@ BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
     lhs->maxExp = sumMaxExp;
     if (lhs->values[sumMaxExp] == 0) lhs->maxExp -= 1;
 
+    return lhs;
+}
+
+BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* negative) {
+    if (lhs->maxExp > rhs->maxExp) {
+        rhs->values = realloc(rhs->values, sizeof(ull) * (lhs->maxExp + 1));
+        memset(rhs->values + rhs->maxExp + 1, 0, (lhs->maxExp - rhs->maxExp) * sizeof(ull));
+    }
+
+    ull carrySet;
+    ull loops = lhs->maxExp + 1;
+    asm ("movq $0, %%rax;"
+         "movq %3, %%rcx;"
+         "clc;"
+         "bint_sub_loop%=:"
+             "movq (%2, %%rax, 8), %%rbx;"
+             "sbbq %%rbx, (%1, %%rax, 8);"
+             "incq %%rax;"
+         "loopq bint_sub_loop%=;"
+         "movq $0, %%rax;"
+         "adcq $0, %%rax;"
+         "movq %%rax, %0;"
+         : "=r" (carrySet)
+         : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
+         : "%rax", "%rbx", "%rcx"
+        );
+
+    if (carrySet) {
+        for (uint i = 0; i <= lhs->maxExp; ++i) {
+            lhs->values[i] = ~(lhs->values[i]);
+        }
+    }
+
+    if (negative) *negative = carrySet;
     return lhs;
 }
 
