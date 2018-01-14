@@ -28,16 +28,39 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
 BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* rem);    /* inplace */
 
-BigInt* bint_add(BigInt* lhs, BigInt* rhs);                 /* inplace */
-BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* negative);  /* inplace */
+BigInt* bint_add(BigInt* lhs, BigInt* rhs);            /* inplace */
+BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg);  /* inplace */
 BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
+BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs);
+BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
 
-ull hi(ull op) {
-    return op >> HALF_LENGTH;
+BigInt* bint_leftWordShift(BigInt* lhs, uint rhs);  /* inplace */
+BigInt* bint_rightWordShift(BigInt* lhs, uint rhs); /* inplace */
+
+BigInt* hi(BigInt* num, uint cutoff) {
+    if (cutoff >= num->maxExp) {
+        return bint_fromWord(0);
+    }
+
+    BigInt* ret = malloc(sizeof(BigInt));
+    uint testSize = num->maxExp - cutoff - 1;
+    ret->maxExp = (num->maxExp < testSize) ? num->maxExp : testSize;
+    ret->values = malloc(sizeof(ull) * (ret->maxExp + 1));
+    memcpy(ret->values, num->values + cutoff + 1, sizeof(ull) * (ret->maxExp + 1));
+
+    return ret;
 }
 
-ull lo(ull op) {
-    return ((1L << HALF_LENGTH) - 1 & op);
+BigInt* lo(BigInt* num, uint cutoff) {
+    if (cutoff >= num->maxExp) {
+        return bint_clone(num);
+    }
+    BigInt* ret = malloc(sizeof(BigInt));
+    ret->maxExp = (num->maxExp < cutoff) ? num->maxExp : cutoff;
+    ret->values = malloc(sizeof(ull) * (ret->maxExp + 1));
+    memcpy(ret->values, num->values, sizeof(ull) * (ret->maxExp + 1));
+
+    return ret;
 }
 
 ull bigMul(ull lhs, ull rhs, ull* _over) {
@@ -219,7 +242,7 @@ BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
     return lhs;
 }
 
-BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* negative) {
+BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
     if (lhs->maxExp > rhs->maxExp) {
         rhs->values = realloc(rhs->values, sizeof(ull) * (lhs->maxExp + 1));
         memset(rhs->values + rhs->maxExp + 1, 0, (lhs->maxExp - rhs->maxExp) * sizeof(ull));
@@ -247,9 +270,10 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* negative) {
         for (uint i = 0; i <= lhs->maxExp; ++i) {
             lhs->values[i] = ~(lhs->values[i]);
         }
+        bint_addWord(lhs, 1, 0);
     }
 
-    if (negative) *negative = carrySet;
+    if (neg) *neg = carrySet;
     return lhs;
 }
 
@@ -312,6 +336,85 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
     return ret;
 }
 
+BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
+    BigInt* ret = bint_fromWord(0);
+    ret->values = realloc(ret->values, sizeof(ull) * (lhs->maxExp + lhs->maxExp + 1));
+
+    for (uint i = 0; i <= lhs->maxExp; ++i) {
+        for (uint j = 0; j <= rhs->maxExp; ++j) {
+            ull prod, over;
+            prod = bigMul(lhs->values[i], rhs->values[j], &over);
+            bint_addWord(ret, prod, i + j);
+            if (over != 0) bint_addWord(ret, over, i + j + 1);
+        }
+    }
+
+    return ret;
+}
+
+BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
+    const uint CUTOFF = 10;
+    if (lhs->maxExp < CUTOFF || rhs->maxExp < CUTOFF) {
+        return bint_mulClassical(lhs, rhs);
+    }
+    BigInt* ret;
+
+    uint lhsHalfExp = (lhs->maxExp + 1) / 2 - 1;
+    uint rhsHalfExp = (rhs->maxExp + 1) / 2 - 1;
+    uint halfExp = (lhsHalfExp > rhsHalfExp) ? lhsHalfExp : rhsHalfExp;
+
+    BigInt* lhsLo = lo(lhs, halfExp);
+    BigInt* lhsHi = hi(lhs, halfExp);
+    BigInt* rhsLo = lo(rhs, halfExp);
+    BigInt* rhsHi = hi(rhs, halfExp);
+
+    BigInt *p0, *p1, *p2;
+
+    p0 = bint_mulKaratsuba(lhsLo, rhsLo);
+    p2 = bint_mulKaratsuba(lhsHi, rhsHi);
+
+    ret = bint_clone(p2);
+    bint_leftWordShift(ret, 2 * (halfExp + 1));
+    bint_add(ret, p0);
+
+    bint_add(lhsHi, lhsLo);
+    bint_add(rhsHi, rhsLo);
+
+    p1 = bint_mulKaratsuba(lhsHi, rhsHi);
+    bint_sub(p1, p0, NULL);
+    bint_sub(p1, p2, NULL);
+
+    bint_leftWordShift(p1, halfExp + 1);
+    bint_add(ret, p1);
+
+    bint_destroy(lhsLo);
+    bint_destroy(lhsHi);
+    bint_destroy(rhsLo);
+    bint_destroy(rhsHi);
+    bint_destroy(p0);
+    bint_destroy(p1);
+    bint_destroy(p2);
+
+    return ret;
+}
+
+BigInt* bint_leftWordShift(BigInt* lhs, uint rhs) {
+    lhs->maxExp += rhs;
+    lhs->values = realloc(lhs->values, sizeof(ull) * (lhs->maxExp + 1));
+
+    for (uint i = lhs->maxExp + 1; i != rhs;) {
+        --i;
+        lhs->values[i] = lhs->values[i - rhs];
+    }
+
+    for (uint i = rhs; i != 0;) {
+        --i;
+        lhs->values[i] = 0;
+    }
+
+    return lhs;
+}
+
 typedef struct thread_PartialFactInfo {
     uint threads;
     uint offset;
@@ -360,7 +463,7 @@ int main(int argc, char** argv) {
         BigInt* partial;
         pthread_join(threadPool[i], (void**) &partial);
 
-        BigInt* prod = bint_mul(ret, partial, threads);
+        BigInt* prod = bint_mulKaratsuba(ret, partial);
         bint_destroy(ret);
         bint_destroy(partial);
 
