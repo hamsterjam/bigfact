@@ -16,7 +16,7 @@ const ull  DECIMAL_SIZE   = 1e19;
 
 typedef struct BigInt {
     ull* values;
-    uint maxExp;
+    uint length;
 } BigInt;
 
 BigInt* bint_fromWord(ull value);
@@ -37,28 +37,28 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
 BigInt* bint_leftWordShift(BigInt* lhs, uint rhs);  /* inplace */
 BigInt* bint_rightWordShift(BigInt* lhs, uint rhs); /* inplace */
 
-BigInt* hi(BigInt* num, uint cutoff) {
-    if (cutoff >= num->maxExp) {
+BigInt* hi(BigInt* num, uint cut) {
+    if (cut >= num->length) {
         return bint_fromWord(0);
     }
 
     BigInt* ret = malloc(sizeof(BigInt));
-    uint testSize = num->maxExp - cutoff - 1;
-    ret->maxExp = (num->maxExp < testSize) ? num->maxExp : testSize;
-    ret->values = malloc(sizeof(ull) * (ret->maxExp + 1));
-    memcpy(ret->values, num->values + cutoff + 1, sizeof(ull) * (ret->maxExp + 1));
+    uint testSize = num->length - cut;
+    ret->length = (num->length < testSize) ? num->length : testSize;
+    ret->values = malloc(sizeof(ull) * ret->length);
+    memcpy(ret->values, num->values + cut, sizeof(ull) * ret->length);
 
     return ret;
 }
 
-BigInt* lo(BigInt* num, uint cutoff) {
-    if (cutoff >= num->maxExp) {
+BigInt* lo(BigInt* num, uint cut) {
+    if (cut >= num->length) {
         return bint_clone(num);
     }
     BigInt* ret = malloc(sizeof(BigInt));
-    ret->maxExp = (num->maxExp < cutoff) ? num->maxExp : cutoff;
-    ret->values = malloc(sizeof(ull) * (ret->maxExp + 1));
-    memcpy(ret->values, num->values, sizeof(ull) * (ret->maxExp + 1));
+    ret->length = (num->length < cut) ? num->length : cut;
+    ret->values = malloc(sizeof(ull) * ret->length);
+    memcpy(ret->values, num->values, sizeof(ull) * ret->length);
 
     return ret;
 }
@@ -96,7 +96,7 @@ ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem) {
 BigInt* bint_fromWord(ull value) {
     BigInt* ret = malloc(sizeof(BigInt));
     ret->values = malloc(sizeof(ull));
-    ret->maxExp = 0;
+    ret->length = 1;
 
     ret->values[0] = value;
 
@@ -105,10 +105,9 @@ BigInt* bint_fromWord(ull value) {
 
 BigInt* bint_clone(BigInt* num) {
     BigInt* ret = malloc(sizeof(BigInt));
-    ret->values = malloc(sizeof(ull) * (num->maxExp + 1));
-    ret->maxExp = num->maxExp;
-
-    memcpy(ret->values, num->values, sizeof(ull) * (num->maxExp + 1));
+    ret->length = num->length;
+    ret->values = malloc(sizeof(ull) * ret->length);
+    memcpy(ret->values, num->values, sizeof(ull) * ret->length);
 
     return ret;
 }
@@ -119,25 +118,25 @@ void bint_destroy(BigInt* num) {
 }
 
 void bint_print(BigInt* num) {
-    uint decimalMaxExp = (uint) ((double) num->maxExp * WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
+    uint decimalLength = (uint) ((double) num->length * WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
 
-    ull* decimalValues = malloc(sizeof(ull) * (decimalMaxExp + 1));
+    ull* decimalValues = malloc(sizeof(ull) * decimalLength);
 
     BigInt* runningDividend = bint_clone(num);
-    for (uint i = 0; i <= decimalMaxExp; ++i) {
+    for (uint i = 0; i < decimalLength; ++i) {
         ull rem;
         bint_divWord(runningDividend, DECIMAL_SIZE, &rem);
         decimalValues[i] = rem;
 
-        if (runningDividend->values[0] == 0 && runningDividend->maxExp == 0){
-            decimalMaxExp = i;
+        if (runningDividend->values[0] == 0 && runningDividend->length == 1){
+            decimalLength = i+1;
             break;
         }
     }
     bint_destroy(runningDividend);
 
-    printf("%llu", decimalValues[decimalMaxExp]);
-    for (uint i = decimalMaxExp; i != 0;) {
+    printf("%llu", decimalValues[decimalLength - 1]);;
+    for (uint i = decimalLength - 1; i != 0;) {
         --i;
         printf("%019llu", decimalValues[i]);
     }
@@ -146,37 +145,38 @@ void bint_print(BigInt* num) {
     free(decimalValues);
 }
 
+//TODO// rewrite
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
-    uint sumMaxExp = lhs->maxExp + 1;
-    if (sumMaxExp < rhsExp) sumMaxExp = rhsExp;
-    lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
+    uint sumLength = lhs->length + 1;
+    if (sumLength < rhsExp + 1) sumLength = rhsExp + 1;
+    lhs->values = realloc(lhs->values, sizeof(ull) * sumLength);
 
-    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * sizeof(ull));
+    memset(lhs->values + lhs->length, 0, (sumLength - lhs->length) * sizeof(ull));
 
     lhs->values[rhsExp] += rhsVal;
     if (lhs->values[rhsExp] < rhsVal) {
         // Overflow
-        for (uint i = rhsExp+1; i <= sumMaxExp; ++i) {
+        for (uint i = rhsExp+1; i < sumLength; ++i) {
             lhs->values[i] += 1;
             if (lhs->values[i] != 0) break;
         }
     }
 
-    lhs->maxExp = sumMaxExp;
-    while (lhs->maxExp != 0 && lhs->values[lhs->maxExp] == 0) lhs->maxExp -= 1;
+    lhs->length = sumLength;
+    while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
 
     return lhs;
 }
 
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
-    uint prodMaxExp = lhs->maxExp + rhsExp + 1;
-    lhs->values = realloc(lhs->values, sizeof(ull) * (prodMaxExp + 1));
+    uint prodLength = lhs->length + rhsExp + 2;
+    lhs->values = realloc(lhs->values, sizeof(ull) * prodLength);
 
-    memset(lhs->values + lhs->maxExp + 1, 0, (prodMaxExp - lhs->maxExp) * sizeof(ull));
+    memset(lhs->values + lhs->length, 0, (prodLength - lhs->length) * sizeof(ull));
 
-    lhs->maxExp = prodMaxExp;
+    lhs->length = prodLength;
 
-    for (uint i = prodMaxExp - rhsExp; i != 0;) {
+    for (uint i = prodLength - rhsExp - 1; i != 0;) {
         --i;
         ull lhsVal = lhs->values[i];
         ull over;
@@ -190,14 +190,14 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
         lhs->values[i] = 0;
     }
 
-    while (lhs->maxExp != 0 && lhs->values[lhs->maxExp] == 0) lhs->maxExp -= 1;
+    while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
 
     return lhs;
 }
 
 BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
     ull rem = 0;
-    for (uint i = lhs->maxExp + 1; i != 0;) {
+    for (uint i = lhs->length; i != 0;) {
         --i;
 
         ull divHi = rem;
@@ -206,23 +206,23 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
         lhs->values[i] = bigDiv(divHi, divLo, rhsVal, &rem);
     }
 
-    while (lhs->maxExp != 0 && lhs->values[lhs->maxExp] == 0) lhs->maxExp -= 1;
+    while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
 
     if (_rem) *_rem = rem;
     return lhs;
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
-    uint sumMaxExp = (lhs->maxExp > rhs->maxExp) ? lhs->maxExp : rhs->maxExp;
-    ++sumMaxExp;
+    uint sumLength = (lhs->length > rhs->length) ? lhs->length : rhs->length;
+    ++sumLength;
 
-    lhs->values = realloc(lhs->values, sizeof(ull) * (sumMaxExp + 1));
-    memset(lhs->values + lhs->maxExp + 1, 0, (sumMaxExp - lhs->maxExp) * sizeof(ull));
+    lhs->values = realloc(lhs->values, sizeof(ull) * sumLength);
+    memset(lhs->values + lhs->length, 0, (sumLength - lhs->length) * sizeof(ull));
 
-    rhs->values = realloc(rhs->values, sizeof(ull) * (sumMaxExp + 1));
-    memset(rhs->values + rhs->maxExp + 1, 0, (sumMaxExp - rhs->maxExp) * sizeof(ull));
+    rhs->values = realloc(rhs->values, sizeof(ull) * sumLength);
+    memset(rhs->values + rhs->length, 0, (sumLength - rhs->length) * sizeof(ull));
 
-    ull loops = sumMaxExp + 1;
+    ull loops = sumLength;
     asm ("movq $0, %%rax;"
          "movq %2, %%rcx;"
          "clc;"
@@ -236,20 +236,20 @@ BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
          : "%rax", "%rbx", "%rcx"
         );
 
-    lhs->maxExp = sumMaxExp;
-    if (lhs->values[sumMaxExp] == 0) lhs->maxExp -= 1;
+    lhs->length = sumLength;
+    if (lhs->values[sumLength - 1] == 0) lhs->length -= 1;
 
     return lhs;
 }
 
 BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
-    if (lhs->maxExp > rhs->maxExp) {
-        rhs->values = realloc(rhs->values, sizeof(ull) * (lhs->maxExp + 1));
-        memset(rhs->values + rhs->maxExp + 1, 0, (lhs->maxExp - rhs->maxExp) * sizeof(ull));
+    if (lhs->length > rhs->length) {
+        rhs->values = realloc(rhs->values, sizeof(ull) * lhs->length);
+        memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(ull));
     }
 
     ull carrySet;
-    ull loops = lhs->maxExp + 1;
+    ull loops = lhs->length;
     asm ("movq $0, %%rax;"
          "movq %3, %%rcx;"
          "clc;"
@@ -267,7 +267,7 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
         );
 
     if (carrySet) {
-        for (uint i = 0; i <= lhs->maxExp; ++i) {
+        for (uint i = 0; i < lhs->length; ++i) {
             lhs->values[i] = ~(lhs->values[i]);
         }
         bint_addWord(lhs, 1, 0);
@@ -277,6 +277,7 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
     return lhs;
 }
 
+/*
 typedef struct thread_PartialMulInfo {
     uint threads;
     uint offset;
@@ -335,13 +336,14 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
     free(threadPool);
     return ret;
 }
+*/
 
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
     BigInt* ret = bint_fromWord(0);
-    ret->values = realloc(ret->values, sizeof(ull) * (lhs->maxExp + lhs->maxExp + 1));
+    ret->values = realloc(ret->values, sizeof(ull) * (lhs->length + lhs->length));
 
-    for (uint i = 0; i <= lhs->maxExp; ++i) {
-        for (uint j = 0; j <= rhs->maxExp; ++j) {
+    for (uint i = 0; i < lhs->length; ++i) {
+        for (uint j = 0; j < rhs->length; ++j) {
             ull prod, over;
             prod = bigMul(lhs->values[i], rhs->values[j], &over);
             bint_addWord(ret, prod, i + j);
@@ -354,19 +356,19 @@ BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
 
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     const uint CUTOFF = 10;
-    if (lhs->maxExp < CUTOFF || rhs->maxExp < CUTOFF) {
+    if (lhs->length < CUTOFF || rhs->length < CUTOFF) {
         return bint_mulClassical(lhs, rhs);
     }
     BigInt* ret;
 
-    uint lhsHalfExp = (lhs->maxExp + 1) / 2 - 1;
-    uint rhsHalfExp = (rhs->maxExp + 1) / 2 - 1;
-    uint halfExp = (lhsHalfExp > rhsHalfExp) ? lhsHalfExp : rhsHalfExp;
+    uint lhsHalfLength = lhs->length/2;
+    uint rhsHalfLength = rhs->length/2;
+    uint halfLength = (lhsHalfLength > rhsHalfLength) ? lhsHalfLength : rhsHalfLength;
 
-    BigInt* lhsLo = lo(lhs, halfExp);
-    BigInt* lhsHi = hi(lhs, halfExp);
-    BigInt* rhsLo = lo(rhs, halfExp);
-    BigInt* rhsHi = hi(rhs, halfExp);
+    BigInt* lhsLo = lo(lhs, halfLength);
+    BigInt* lhsHi = hi(lhs, halfLength);
+    BigInt* rhsLo = lo(rhs, halfLength);
+    BigInt* rhsHi = hi(rhs, halfLength);
 
     BigInt *p0, *p1, *p2;
 
@@ -374,7 +376,7 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     p2 = bint_mulKaratsuba(lhsHi, rhsHi);
 
     ret = bint_clone(p2);
-    bint_leftWordShift(ret, 2 * (halfExp + 1));
+    bint_leftWordShift(ret, 2*halfLength);
     bint_add(ret, p0);
 
     bint_add(lhsHi, lhsLo);
@@ -384,7 +386,7 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     bint_sub(p1, p0, NULL);
     bint_sub(p1, p2, NULL);
 
-    bint_leftWordShift(p1, halfExp + 1);
+    bint_leftWordShift(p1, halfLength);
     bint_add(ret, p1);
 
     bint_destroy(lhsLo);
@@ -398,16 +400,16 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     return ret;
 }
 
-BigInt* bint_leftWordShift(BigInt* lhs, uint rhs) {
-    lhs->maxExp += rhs;
-    lhs->values = realloc(lhs->values, sizeof(ull) * (lhs->maxExp + 1));
+BigInt* bint_leftWordShift(BigInt* lhs, uint words) {
+    lhs->length += words;
+    lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
 
-    for (uint i = lhs->maxExp + 1; i != rhs;) {
+    for (uint i = lhs->length; i != words;) {
         --i;
-        lhs->values[i] = lhs->values[i - rhs];
+        lhs->values[i] = lhs->values[i - words];
     }
 
-    for (uint i = rhs; i != 0;) {
+    for (uint i = words; i != 0;) {
         --i;
         lhs->values[i] = 0;
     }
