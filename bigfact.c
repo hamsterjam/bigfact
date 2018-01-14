@@ -169,29 +169,22 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
 }
 
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
-    uint prodLength = lhs->length + rhsExp + 2;
-    lhs->values = realloc(lhs->values, sizeof(ull) * prodLength);
+    BigInt carry;
+    carry.length = lhs->length + 1;
+    carry.values = malloc(sizeof(ull) * carry.length);
+    carry.values[0] = 0;
 
-    memset(lhs->values + lhs->length, 0, (prodLength - lhs->length) * sizeof(ull));
-
-    lhs->length = prodLength;
-
-    for (uint i = prodLength - rhsExp - 1; i != 0;) {
-        --i;
-        ull lhsVal = lhs->values[i];
+    for (uint i = 0; i < lhs->length; ++i) {
         ull over;
-        lhs->values[i+rhsExp] = bigMul(lhsVal, rhsVal, &over);
-        if (over != 0) {
-            // Overflow
-            bint_addWord(lhs, over, i+rhsExp+1);
-        }
-    }
-    for (uint i = 0; i < rhsExp; ++i) {
-        lhs->values[i] = 0;
+        lhs->values[i] = bigMul(lhs->values[i], rhsVal, &over);
+        carry.values[i+1] = over;
     }
 
+    bint_add(lhs, &carry);
     while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+    bint_leftWordShift(lhs, rhsExp);
 
+    free(carry.values);
     return lhs;
 }
 
