@@ -65,10 +65,10 @@ BigInt* lo(BigInt* num, uint cut) {
 
 ull bigMul(ull lhs, ull rhs, ull* _over) {
     ull ret, over;
-    asm ("movq %2, %%rax;"
-         "mulq %3;"
-         "movq %%rax, %0;"
-         "movq %%rdx, %1;"
+    asm ("mov %2, %%rax;"
+         "mul %3;"
+         "mov %%rax, %0;"
+         "mov %%rdx, %1;"
          : "=r" (ret), "=r" (over)
          : "r"  (lhs), "r"  (rhs)
          : "%rdx", "%rax"
@@ -80,11 +80,11 @@ ull bigMul(ull lhs, ull rhs, ull* _over) {
 
 ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem) {
     ull ret, rem;
-    asm ("movq %2, %%rdx;"
-         "movq %3, %%rax;"
-         "divq %4;"
-         "movq %%rax, %0;"
-         "movq %%rdx, %1;"
+    asm ("mov %2, %%rdx;"
+         "mov %3, %%rax;"
+         "div %4;"
+         "mov %%rax, %0;"
+         "mov %%rdx, %1;"
          : "=r" (ret),   "=r" (rem)
          : "r"  (lhsHi), "r"  (lhsLo), "r" (rhs)
          : "%rdx", "%rax"
@@ -216,14 +216,14 @@ BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
     memset(rhs->values + rhs->length, 0, (sumLength - rhs->length) * sizeof(ull));
 
     ull loops = sumLength;
-    asm ("movq $0, %%rax;"
-         "movq %2, %%rcx;"
+    asm ("mov $0, %%rax;"
+         "mov %2, %%rcx;"
          "clc;"
          "bint_add_loop%=:"
-             "movq (%1, %%rax, 8), %%rbx;"
-             "adcq %%rbx, (%0, %%rax, 8);"
-             "incq %%rax;"
-         "loopq bint_add_loop%=;"
+             "mov (%1, %%rax, 8), %%rbx;"
+             "adc %%rbx, (%0, %%rax, 8);"
+             "inc %%rax;"
+         "loop bint_add_loop%=;"
          :
          : "r" (lhs->values), "r" (rhs->values), "r" (loops)
          : "%rax", "%rbx", "%rcx"
@@ -243,17 +243,17 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
 
     ull carrySet;
     ull loops = lhs->length;
-    asm ("movq $0, %%rax;"
-         "movq %3, %%rcx;"
+    asm ("mov $0, %%rax;"
+         "mov %3, %%rcx;"
          "clc;"
          "bint_sub_loop%=:"
-             "movq (%2, %%rax, 8), %%rbx;"
-             "sbbq %%rbx, (%1, %%rax, 8);"
-             "incq %%rax;"
-         "loopq bint_sub_loop%=;"
-         "movq $0, %%rax;"
-         "adcq $0, %%rax;"
-         "movq %%rax, %0;"
+             "mov (%2, %%rax, 8), %%rbx;"
+             "sbb %%rbx, (%1, %%rax, 8);"
+             "inc %%rax;"
+         "loop bint_sub_loop%=;"
+         "mov $0, %%rax;"
+         "adc $0, %%rax;"
+         "mov %%rax, %0;"
          : "=r" (carrySet)
          : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
          : "%rax", "%rbx", "%rcx"
