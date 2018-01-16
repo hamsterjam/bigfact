@@ -1,13 +1,19 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
 #include <math.h>   // M_LN10, M_LN2
 #include <string.h> // memcpy, memset
 #include <pthread.h>
+
+#define bool int
+#define false 0
+#define true !(false)
 
 typedef unsigned long long ull;
 typedef unsigned int uint;
 
 const uint WORD_LENGTH = 64;
+const ull  WORD_MAX    = ULLONG_MAX;
 const uint HALF_LENGTH = 32;
 const ull  HALF_SIZE   = 1L << 32;
 
@@ -24,18 +30,21 @@ BigInt* bint_clone(BigInt* num);
 void bint_destroy(BigInt* num);
 void bint_print(BigInt* num);
 
-BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
-BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp); /* inplace */
-BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* rem);    /* inplace */
+BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp);           /* inplace */
+BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* neg); /* inplace */
+BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp);           /* inplace */
+BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* rem);              /* inplace */
 
-BigInt* bint_add(BigInt* lhs, BigInt* rhs);            /* inplace */
-BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg);  /* inplace */
+BigInt* bint_add(BigInt* lhs, BigInt* rhs);                           /* inplace */
+BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg);                 /* inplace */
 BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
+BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** rem);
+
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs);
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
 
-BigInt* bint_leftWordShift(BigInt* lhs, uint rhs);  /* inplace */
-BigInt* bint_rightWordShift(BigInt* lhs, uint rhs); /* inplace */
+BigInt* bint_leftWordShift(BigInt* lhs, uint rhs);                    /* inplace */
+BigInt* bint_rightWordShift(BigInt* lhs, uint rhs);                   /* inplace */
 
 BigInt* hi(BigInt* num, uint cut) {
     if (cut >= num->length) {
@@ -145,26 +154,70 @@ void bint_print(BigInt* num) {
     free(decimalValues);
 }
 
-//TODO// rewrite
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
-    uint sumLength = lhs->length + 1;
-    if (sumLength < rhsExp + 1) sumLength = rhsExp + 1;
-    lhs->values = realloc(lhs->values, sizeof(ull) * sumLength);
+    if (lhs->length < rhsExp + 1) {
+        lhs->values = realloc(lhs->values, sizeof(ull) * (rhsExp + 1));
+        memset(lhs->values + lhs->length, 0, sizeof(ull) * (rhsExp + 1 - lhs->length));
+        lhs->length = rhsExp + 1;
+        lhs->values[rhsExp] = rhsVal;
 
-    memset(lhs->values + lhs->length, 0, (sumLength - lhs->length) * sizeof(ull));
+        return lhs;
+    }
 
     lhs->values[rhsExp] += rhsVal;
+    bool over = false;
     if (lhs->values[rhsExp] < rhsVal) {
-        // Overflow
-        for (uint i = rhsExp+1; i < sumLength; ++i) {
+        over = true;
+        for (uint i = rhsExp + 1; i < lhs->length; ++i) {
             lhs->values[i] += 1;
-            if (lhs->values[i] != 0) break;
+            if (lhs->values[i] != 0) {
+                over = false;
+                break;
+            }
         }
     }
 
-    lhs->length = sumLength;
-    while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+    if (over) {
+        lhs->length += 1;
+        lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
+        lhs->values[lhs->length - 1] = 1;
+    }
 
+    return lhs;
+}
+
+BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* _neg) {
+    uint diffLength = lhs->length;
+    if (lhs->length < rhsExp + 1) {
+        diffLength = rhsExp + 1;
+        lhs->values = realloc(lhs->values, sizeof(ull) * diffLength);
+        memset(lhs->values + lhs->length, 0, (diffLength - lhs->length) * sizeof(ull));
+    }
+
+    lhs->values[rhsExp] -= rhsVal;
+    bool neg = false;
+    if (lhs->values[rhsExp] > rhsVal) {
+        neg = true;
+        for (uint i = rhsExp + 1; i < diffLength; ++i) {
+            lhs->values[i] -= 1;
+            if (lhs->values[i] != WORD_MAX) {
+                neg = false;
+                break;
+            }
+        }
+    }
+
+    if (neg) {
+        lhs->length = diffLength;
+        for (uint i = 0; i < diffLength; ++i) {
+            lhs->values[i] = ~lhs->values[i];
+        }
+        bint_addWord(lhs, 1, 0);
+    }
+
+    while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+
+    if (_neg) *_neg = neg;
     return lhs;
 }
 
@@ -181,7 +234,7 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     }
 
     bint_add(lhs, &carry);
-    while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+    while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
     bint_leftWordShift(lhs, rhsExp);
 
     free(carry.values);
@@ -199,7 +252,7 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
         lhs->values[i] = bigDiv(divHi, divLo, rhsVal, &rem);
     }
 
-    while (lhs->length != 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+    while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
 
     if (_rem) *_rem = rem;
     return lhs;
@@ -330,6 +383,49 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
     return ret;
 }
 */
+
+BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    BigInt* quot = malloc(sizeof(BigInt));
+    quot->length = lhs->length - rhs->length + 1;
+    quot->values = malloc(sizeof(ull) * quot->length);
+
+    BigInt* dividend = bint_clone(lhs);
+    dividend->length += 1;
+    dividend->values = realloc(dividend->values, sizeof(ull) * dividend->length);
+    dividend->values[dividend->length - 1] = 0;
+    for (uint i = quot->length; i != 0;) {
+        --i;
+        ull dividendHi = dividend->values[dividend->length - 1];
+        ull dividendLo = dividend->values[dividend->length - 2];
+        ull divisor    = rhs->values[rhs->length - 1];
+
+        ull testQuot = bigDiv(dividendHi, dividendLo, divisor, NULL);
+        BigInt* testVal = bint_mulWord(bint_clone(rhs), testQuot, 0);
+
+        BigInt pseudoShifted;
+        pseudoShifted.length = rhs->length + 1;
+        pseudoShifted.values = dividend->values + i;
+
+        int neg;
+        bint_sub(&pseudoShifted, testVal, &neg);
+        while (neg) {
+            // Should run at most 2 times
+            bint_sub(&pseudoShifted, rhs, &neg);
+            neg = !neg;
+            --testQuot;
+        }
+
+        dividend->length -= 1;
+
+        quot->values[i] = testQuot;
+        bint_destroy(testVal);
+    }
+
+    if (rem) *rem = dividend;
+    else bint_destroy(dividend);
+
+    return quot;
+}
 
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
     BigInt* ret = bint_fromWord(0);
