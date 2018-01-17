@@ -51,6 +51,8 @@ BigInt* bint_rightWordShift(BigInt* lhs, uint rhs);                    /* inplac
 BigInt* bint_radMulWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad); /* inplace */
 BigInt* bint_radAddWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad); /* inplace */
 
+BigInt* bint_radAdd(BigInt* lhs, BigInt* rhs, ull rad);                /* inplace */
+
 BigInt* hi(BigInt* num, uint cut) {
     if (cut >= num->length) {
         return bint_fromWord(0);
@@ -337,31 +339,40 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
-    uint sumLength = (lhs->length > rhs->length) ? lhs->length : rhs->length;
-    ++sumLength;
 
-    lhs->values = realloc(lhs->values, sizeof(ull) * sumLength);
-    memset(lhs->values + lhs->length, 0, (sumLength - lhs->length) * sizeof(ull));
+    if (lhs->length > rhs->length) {
+        rhs->values = realloc(rhs->values, sizeof(ull) * lhs->length);
+        memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(ull));
+    }
+    else if (lhs->length < rhs->length) {
+        lhs->values = realloc(lhs->values, sizeof(ull) * rhs->length);
+        memset(lhs->values + lhs->length, 0, (rhs->length - lhs->length) * sizeof(ull));
+        lhs->length = rhs->length;
+    }
 
-    rhs->values = realloc(rhs->values, sizeof(ull) * sumLength);
-    memset(rhs->values + rhs->length, 0, (sumLength - rhs->length) * sizeof(ull));
-
-    ull loops = sumLength;
+    ull carrySet;
+    ull loops = lhs->length;
     asm ("mov $0, %%rax;"
-         "mov %2, %%rcx;"
+         "mov %3, %%rcx;"
          "clc;"
          "bint_add_loop%=:"
-             "mov (%1, %%rax, 8), %%rbx;"
-             "adc %%rbx, (%0, %%rax, 8);"
+             "mov (%2, %%rax, 8), %%rbx;"
+             "adc %%rbx, (%1, %%rax, 8);"
              "inc %%rax;"
          "loop bint_add_loop%=;"
-         :
-         : "r" (lhs->values), "r" (rhs->values), "r" (loops)
+         "mov $0, %%rax;"
+         "adc $0, %%rax;"
+         "mov %%rax, %0;"
+         : "=r" (carrySet)
+         : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
          : "%rax", "%rbx", "%rcx"
         );
 
-    lhs->length = sumLength;
-    if (lhs->values[sumLength - 1] == 0) lhs->length -= 1;
+    if (carrySet) {
+        lhs->length += 1;
+        lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
+        lhs->values[lhs->length - 1] = 1;
+    }
 
     return lhs;
 }
@@ -612,6 +623,15 @@ BigInt* bint_leftWordShift(BigInt* lhs, uint words) {
     return lhs;
 }
 
+BigInt* bint_radMulWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad) {
+}
+
+BigInt* bint_radAddWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad) {
+}
+
+BigInt* bint_radAdd(BigInt* lhs, BigInt* rhs, ull rad) {
+}
+
 typedef struct thread_PartialFactInfo {
     uint threads;
     uint offset;
@@ -668,7 +688,7 @@ int main(int argc, char** argv) {
     }
 
     while (ret->length > 1 && ret->values[ret->length - 1] == 0) ret->length -= 1;
-    bint_printThreaded(ret, threads);
+    bint_print(ret);
 
     bint_destroy(ret);
     free(threadPool);
