@@ -380,6 +380,59 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
     return bint_shrink(lhs);
 }
 
+void* _thread_bint_mulKaratsuba(void* _args) {
+    BigInt** args = (BigInt**) _args;
+
+    BigInt* lhs = args[0];
+    BigInt* rhs = args[1];
+    free(args);
+
+    return (void*) bint_mulKaratsuba(lhs, rhs);
+}
+
+BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
+    uint lengthPerThread = rhs->length / 4;
+
+    BigInt* sliceHi = bint_clone(rhs);
+
+    BigInt** slices = malloc(sizeof(BigInt*) * threads);
+    for (int i = 0; i < threads - 1; ++i) {
+        BigInt* oldSliceHi = sliceHi;
+        slices[i] = lo(sliceHi, lengthPerThread);
+        sliceHi   = hi(sliceHi, lengthPerThread);
+
+        bint_destroy(oldSliceHi);
+    }
+    slices[threads - 1] = sliceHi;
+
+    pthread_t* threadPool = malloc(sizeof(pthread_t) * threads);
+    for (int i = 0; i < threads; ++i) {
+        BigInt** args = malloc(sizeof(BigInt*) * 2);
+        args[0] = lhs;
+        args[1] = slices[i];
+        pthread_create(&threadPool[i], NULL, _thread_bint_mulKaratsuba, (void*) args);
+    }
+
+    BigInt* ret;
+    pthread_join(threadPool[0], (void**) &ret);
+    bint_destroy(slices[0]);
+
+    for (int i = 1; i < threads; ++i) {
+        BigInt* part;
+        pthread_join(threadPool[i], (void**) &part);
+        bint_destroy(slices[i]);
+
+        bint_leftWordShift(part, lengthPerThread * i);
+        bint_add(ret, part);
+
+        bint_destroy(part);
+    }
+
+    free(slices);
+    free(threadPool);
+    return ret;
+}
+
 BigInt* bint_div(BigInt* _lhs, BigInt* _rhs, BigInt** rem) {
     if (_lhs->length < _rhs->length) {
         if (rem) *rem = bint_clone(_lhs);
@@ -673,7 +726,7 @@ int main(int argc, char** argv) {
         BigInt* partial;
         pthread_join(threadPool[i], (void**) &partial);
 
-        BigInt* prod = bint_mulKaratsuba(ret, partial);
+        BigInt* prod = bint_mul(ret, partial, threads);
         bint_destroy(ret);
         bint_destroy(partial);
 
