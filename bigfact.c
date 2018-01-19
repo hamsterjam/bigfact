@@ -28,9 +28,10 @@ typedef struct BigInt {
 
 BigInt* bint_fromWord(ull value);
 BigInt* bint_clone(BigInt* num);
+BigInt* bint_shrink(BigInt* num);
 void bint_destroy(BigInt* num);
 void bint_print(BigInt* num);
-void bint_printThreaded(BigInt* num, uint threads);
+void bint_mulPrint(BigInt* num);
 
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp);            /* inplace */
 BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* neg);  /* inplace */
@@ -134,77 +135,14 @@ BigInt* bint_clone(BigInt* num) {
     return ret;
 }
 
+BigInt* bint_shrink(BigInt* num) {
+    while (num->length > 1 && num->values[num->length - 1] == 0) num->length -= 1;
+    return num;
+}
+
 void bint_destroy(BigInt* num) {
     free(num->values);
     free(num);
-}
-
-typedef struct _thread_print_info {
-    BigInt* value;
-    ull*    decimalValues;
-} _thread_print_info;
-
-void* _thread_print(void* _info) {
-    _thread_print_info info = * (_thread_print_info*) _info;
-    BigInt* value         = info.value;
-    ull*    decimalValues = info.decimalValues;
-    free(_info);
-
-    uint i = 0;
-    while (true) {
-        ull rem;
-        bint_divWord(value, DECIMAL_SIZE, &rem);
-        decimalValues[i] = rem;
-
-        if (value->values[0] == 0 && value->length == 1) break;
-        ++i;
-    }
-
-    bint_destroy(value);
-    return NULL;
-}
-
-void bint_printThreaded(BigInt* num, uint threads) {
-    uint decimalLength = (uint) ((double) num->length * WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
-    ull* decimalValues = malloc(sizeof(ull) * decimalLength);
-
-    uint decimalLengthPerThread = decimalLength / 4;
-
-    BigInt maxValuePerThread;
-    maxValuePerThread.length = 1;
-    maxValuePerThread.values = malloc(sizeof(ull) * maxValuePerThread.length);
-    maxValuePerThread.values[0] = 1;
-    for (uint i = 0; i < decimalLengthPerThread; ++i) {
-        bint_mulWord(&maxValuePerThread, 1e19, 0);
-    }
-    while (maxValuePerThread.values[maxValuePerThread.length - 1] == 0) maxValuePerThread.length -= 1;
-
-    BigInt* runningDividend = bint_clone(num);
-    pthread_t* threadPool = malloc(sizeof(pthread_t) * threads);
-    for (uint i = 0; i < threads; ++i) {
-        _thread_print_info* info = malloc(sizeof(_thread_print_info));
-        info->decimalValues = decimalValues + decimalLengthPerThread * i;
-
-        BigInt* oldDividend = runningDividend;
-        runningDividend = bint_div(runningDividend, &maxValuePerThread, &info->value);
-        bint_destroy(oldDividend);
-        pthread_create(&threadPool[i], NULL, _thread_print, (void*) info);
-    }
-    free(maxValuePerThread.values);
-
-    for (uint i = 0; i < threads; ++i) pthread_join(threadPool[i], NULL);
-    free(threadPool);
-
-    while (decimalLength > 1 && decimalValues[decimalLength - 1] == 0) decimalLength -= 1;
-
-    printf("%llu", decimalValues[decimalLength - 1]);;
-    for (uint i = decimalLength - 1; i != 0;) {
-        --i;
-        printf("%019llu", decimalValues[i]);
-    }
-    printf("\n");
-
-    free(decimalValues);
 }
 
 void bint_print(BigInt* num) {
@@ -234,6 +172,40 @@ void bint_print(BigInt* num) {
     free(decimalValues);
 }
 
+void bint_mulPrint(BigInt* num) {
+    ull binRadHi, binRadLo;
+    binRadHi = bigDiv(1, 0, DECIMAL_SIZE, &binRadLo, NULL);
+
+    BigInt decimal;
+    decimal.length = 2;
+    decimal.values = malloc(sizeof(ull) * decimal.length);
+
+    decimal.values[0] = num->values[num->length - 1] % DECIMAL_SIZE;
+    decimal.values[1] = num->values[num->length - 1] / DECIMAL_SIZE;
+
+    bint_shrink(&decimal);
+
+    for (uint i = num->length - 1; i != 0;) {
+        --i;
+        BigInt* subProduct = bint_radMulWord(bint_clone(&decimal), binRadLo, 0, DECIMAL_SIZE);
+        bint_radMulWord(&decimal, binRadHi, 1, DECIMAL_SIZE);
+        bint_radAdd(&decimal, subProduct, DECIMAL_SIZE);
+        bint_destroy(subProduct);
+
+        bint_radAddWord(&decimal, num->values[i] % DECIMAL_SIZE, 0, DECIMAL_SIZE);
+        bint_radAddWord(&decimal, num->values[i] / DECIMAL_SIZE, 1, DECIMAL_SIZE);
+    }
+
+    printf("%llu", decimal.values[decimal.length - 1]);
+    for (uint i = decimal.length - 1; i != 0;) {
+        --i;
+        printf("%019llu", decimal.values[i]);
+    }
+    printf("\n");
+
+    free(decimal.values);
+}
+
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     if (lhs->length < rhsExp + 1) {
         lhs->values = realloc(lhs->values, sizeof(ull) * (rhsExp + 1));
@@ -245,25 +217,25 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     }
 
     lhs->values[rhsExp] += rhsVal;
-    bool over = false;
+    bool carry = false;
     if (lhs->values[rhsExp] < rhsVal) {
-        over = true;
+        carry = true;
         for (uint i = rhsExp + 1; i < lhs->length; ++i) {
             lhs->values[i] += 1;
             if (lhs->values[i] != 0) {
-                over = false;
+                carry = false;
                 break;
             }
         }
     }
 
-    if (over) {
+    if (carry) {
         lhs->length += 1;
         lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
         lhs->values[lhs->length - 1] = 1;
     }
 
-    return lhs;
+    return bint_shrink(lhs);
 }
 
 BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* _neg) {
@@ -295,10 +267,8 @@ BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* _neg) {
         bint_addWord(lhs, 1, 0);
     }
 
-    while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
-
     if (_neg) *_neg = neg;
-    return lhs;
+    return bint_shrink(lhs);
 }
 
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
@@ -314,7 +284,7 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     }
 
     bint_add(lhs, &carry);
-    while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+    bint_shrink(lhs);
     bint_leftWordShift(lhs, rhsExp);
 
     free(carry.values);
@@ -332,10 +302,8 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
         lhs->values[i] = bigDiv(divHi, divLo, rhsVal, &rem, NULL);
     }
 
-    while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
-
     if (_rem) *_rem = rem;
-    return lhs;
+    return bint_shrink(lhs);
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
@@ -374,7 +342,7 @@ BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
         lhs->values[lhs->length - 1] = 1;
     }
 
-    return lhs;
+    return bint_shrink(lhs);
 }
 
 BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
@@ -409,69 +377,8 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
     }
 
     if (neg) *neg = carrySet;
-    return lhs;
+    return bint_shrink(lhs);
 }
-
-/*
-typedef struct thread_PartialMulInfo {
-    uint threads;
-    uint offset;
-    BigInt* lhs;
-    BigInt* rhs;
-} thread_PartialMulInfo;
-
-void* thread_partialMul(void* _info) {
-    thread_PartialMulInfo* info = (thread_PartialMulInfo*) _info;
-    uint threads = info->threads;
-    uint offset  = info->offset;
-    BigInt* lhs  = info->lhs;
-    BigInt* rhs  = info->rhs;
-    free(_info);
-
-    uint maxExp = lhs->maxExp + rhs->maxExp + 1;
-
-    BigInt* ret = malloc(sizeof(BigInt));
-    ret->values = malloc(sizeof(ull) * (maxExp + 1));
-    ret->maxExp = 0;
-    ret->values[0] = 0;
-
-    for (uint i = offset; i <= rhs->maxExp; i += threads) {
-        BigInt* step = bint_clone(lhs);
-        bint_mulWord(step, rhs->values[i], i);
-        bint_add(ret, step);
-        bint_destroy(step);
-    }
-
-    return (void*) ret;
-}
-
-BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
-    pthread_t* threadPool = malloc(sizeof(pthread_t) * threads);
-    for (int i = 0; i < threads; ++i) {
-        thread_PartialMulInfo* info = malloc(sizeof(thread_PartialMulInfo));
-        info->threads = threads;
-        info->offset  = i;
-        info->lhs     = lhs;
-        info->rhs     = rhs;
-
-        pthread_create(&threadPool[i], NULL, thread_partialMul, (void*) info);
-    }
-
-    BigInt* ret;
-    pthread_join(threadPool[0], (void**) &ret);
-
-    for (int i = 1; i < threads; ++i) {
-        BigInt* partial;
-        pthread_join(threadPool[i], (void**) &partial);
-
-        bint_add(ret, partial);
-        bint_destroy(partial);
-    }
-
-    free(threadPool);
-    return ret;
-}
-*/
 
 BigInt* bint_div(BigInt* _lhs, BigInt* _rhs, BigInt** rem) {
     if (_lhs->length < _rhs->length) {
@@ -521,7 +428,7 @@ BigInt* bint_div(BigInt* _lhs, BigInt* _rhs, BigInt** rem) {
         int count = 0;
         while (neg) {
             assert(++count <= 2);
-            while (pseudoShifted.length > 1 && pseudoShifted.values[pseudoShifted.length - 1] == 0) pseudoShifted.length -= 1;
+            bint_shrink(&pseudoShifted);
             bint_sub(&pseudoShifted, rhs, &neg);
             neg = !neg;
             --testQuot;
@@ -532,16 +439,13 @@ BigInt* bint_div(BigInt* _lhs, BigInt* _rhs, BigInt** rem) {
     }
 
     if (rem) {
-        while (lhs->length > 1 && lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
-        *rem = bint_divWord(lhs, normFactor, NULL);
+        bint_divWord(lhs, normFactor, NULL);
+        *rem = bint_shrink(lhs);
     }
     else bint_destroy(lhs);
-
     bint_destroy(rhs);
 
-    while (quot->length > 1 && quot->values[quot->length - 1] == 0) quot->length -= 1;
-
-    return quot;
+    return bint_shrink(quot);
 }
 
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
@@ -557,7 +461,7 @@ BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
         }
     }
 
-    return ret;
+    return bint_shrink(ret);
 }
 
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
@@ -603,7 +507,7 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     bint_destroy(p1);
     bint_destroy(p2);
 
-    return ret;
+    return bint_shrink(ret);
 }
 
 BigInt* bint_leftWordShift(BigInt* lhs, uint words) {
@@ -624,12 +528,101 @@ BigInt* bint_leftWordShift(BigInt* lhs, uint words) {
 }
 
 BigInt* bint_radMulWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad) {
+    BigInt carry;
+    carry.length = lhs->length + 1;
+    carry.values = malloc(sizeof(ull) * carry.length);
+    carry.values[0] = 0;
+
+    for (uint i = 0; i < lhs->length; ++i) {
+        ull prod, over;
+        prod = bigMul(lhs->values[i], rhsVal, &over);
+        over = bigDiv(over, prod, rad, &prod, NULL);
+
+        lhs->values[i]      = prod;
+        carry.values[i + 1] = over;
+    }
+
+    bint_radAdd(lhs, &carry, rad);
+    bint_shrink(lhs);
+    bint_leftWordShift(lhs, rhsExp);
+
+    free(carry.values);
+    return lhs;
 }
 
 BigInt* bint_radAddWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad) {
+    if (lhs->length < rhsExp + 1) {
+        lhs->values = realloc(lhs->values, sizeof(ull) * (rhsExp + 1));
+        memset(lhs->values + lhs->length, 0 ,sizeof(ull) * (rhsExp + 1 - lhs->length));
+        lhs->length = rhsExp + 1;
+        lhs->values[rhsExp] = rhsVal;
+
+        return lhs;
+    }
+
+    ull sum   = lhs->values[rhsExp] + rhsVal;
+    bool over = sum < rhsVal;
+    bigDiv(over, sum, rad, &sum, NULL);
+
+    lhs->values[rhsExp] = sum;
+    bool carry = false;
+    if (lhs->values[rhsExp] < rhsVal) {
+        carry = true;
+        for (uint i = rhsExp + 1; i < lhs->length; ++i) {
+            lhs->values[i] += 1;
+            if (lhs->values[i] >= rad){
+                lhs->values[i] = 0;
+            }
+            else {
+                carry = false;
+                break;
+            }
+        }
+    }
+
+    if (carry) {
+        lhs->length += 1;
+        lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
+        lhs->values[lhs->length - 1] = 1;
+    }
+
+    return bint_shrink(lhs);
 }
 
 BigInt* bint_radAdd(BigInt* lhs, BigInt* rhs, ull rad) {
+    ull sumLength = (lhs->length > rhs->length) ? lhs->length : rhs->length;
+
+    if (rhs->length < sumLength) {
+        rhs->values = realloc(rhs->values, sizeof(ull) * sumLength);
+        memset(rhs->values + rhs->length, 0, (sumLength - rhs->length) * sizeof(ull));
+    }
+    else if (lhs->length < sumLength) {
+        lhs->values = realloc(lhs->values, sizeof(ull) * sumLength);
+        memset(lhs->values + lhs->length, 0, (sumLength - lhs->length) * sizeof(ull));
+        lhs->length = sumLength;
+    }
+
+    bool carry = false;
+    for (uint i = 0; i < sumLength; ++i) {
+        ull sum = lhs->values[i] + rhs->values[i] + carry;
+        bool overflow = lhs->values[i] != 0 &&
+                        rhs->values[i] != 0 &&
+                        sum <= lhs->values[i] &&
+                        sum <= rhs->values[i];
+
+        carry = overflow || sum >= rad;
+
+        bigDiv(overflow, sum, rad, &sum, NULL);
+        lhs->values[i] = sum;
+    }
+
+    if (carry) {
+        lhs->length = sumLength + 1;
+        lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
+        lhs->values[lhs->length - 1] = 1;
+    }
+
+    return bint_shrink(lhs);
 }
 
 typedef struct thread_PartialFactInfo {
@@ -687,7 +680,6 @@ int main(int argc, char** argv) {
         ret = prod;
     }
 
-    while (ret->length > 1 && ret->values[ret->length - 1] == 0) ret->length -= 1;
     bint_print(ret);
 
     bint_destroy(ret);
