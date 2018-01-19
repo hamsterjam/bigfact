@@ -172,40 +172,6 @@ void bint_print(BigInt* num) {
     free(decimalValues);
 }
 
-void bint_mulPrint(BigInt* num) {
-    ull binRadHi, binRadLo;
-    binRadHi = bigDiv(1, 0, DECIMAL_SIZE, &binRadLo, NULL);
-
-    BigInt decimal;
-    decimal.length = 2;
-    decimal.values = malloc(sizeof(ull) * decimal.length);
-
-    decimal.values[0] = num->values[num->length - 1] % DECIMAL_SIZE;
-    decimal.values[1] = num->values[num->length - 1] / DECIMAL_SIZE;
-
-    bint_shrink(&decimal);
-
-    for (uint i = num->length - 1; i != 0;) {
-        --i;
-        BigInt* subProduct = bint_radMulWord(bint_clone(&decimal), binRadLo, 0, DECIMAL_SIZE);
-        bint_radMulWord(&decimal, binRadHi, 1, DECIMAL_SIZE);
-        bint_radAdd(&decimal, subProduct, DECIMAL_SIZE);
-        bint_destroy(subProduct);
-
-        bint_radAddWord(&decimal, num->values[i] % DECIMAL_SIZE, 0, DECIMAL_SIZE);
-        bint_radAddWord(&decimal, num->values[i] / DECIMAL_SIZE, 1, DECIMAL_SIZE);
-    }
-
-    printf("%llu", decimal.values[decimal.length - 1]);
-    for (uint i = decimal.length - 1; i != 0;) {
-        --i;
-        printf("%019llu", decimal.values[i]);
-    }
-    printf("\n");
-
-    free(decimal.values);
-}
-
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
     if (lhs->length < rhsExp + 1) {
         lhs->values = realloc(lhs->values, sizeof(ull) * (rhsExp + 1));
