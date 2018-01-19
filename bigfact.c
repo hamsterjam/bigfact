@@ -44,8 +44,12 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg);                  /* inplac
 BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
 BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** rem);
 
+BigInt* bint_addNoLastCarry(BigInt* lhs, BigInt* rhs, bool* carry);    /* inplace */
+BigInt* bint_subNoLastCarry(BigInt* lhs, BigInt* rhs, bool* carry);    /* inplace */
+
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs);
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
+BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem);
 
 BigInt* bint_leftWordShift(BigInt* lhs, uint rhs);                     /* inplace */
 BigInt* bint_rightWordShift(BigInt* lhs, uint rhs);                    /* inplace */
@@ -99,8 +103,17 @@ ull bigMul(ull lhs, ull rhs, ull* _over) {
 ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem, int* overflow) {
     if (rhs <= lhsHi) {
         if (overflow) *overflow = true;
-        if (_rem) _rem = 0;
-        return ULLONG_MAX;
+        if (_rem) {
+            ull radix, resHi, resLo;
+            bigDiv(1, 0, rhs, &radix, NULL);
+
+            resLo = bigMul(radix, lhsHi, &resHi);
+            resLo += lhsLo;
+            if (resLo < lhsLo) ++resHi;
+
+            bigDiv(resHi, resLo, rhs, _rem, NULL);
+        }
+        return 0;
     }
     ull ret, rem;
     asm ("mov %2, %%rdx;"
@@ -296,77 +309,31 @@ ull bint_modWord(BigInt* lhs, ull rhsVal) {
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
+    bool carry;
+    bint_addNoLastCarry(lhs, rhs, &carry);
 
-    if (lhs->length > rhs->length) {
-        rhs->values = realloc(rhs->values, sizeof(ull) * lhs->length);
-        memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(ull));
-    }
-    else if (lhs->length < rhs->length) {
-        lhs->values = realloc(lhs->values, sizeof(ull) * rhs->length);
-        memset(lhs->values + lhs->length, 0, (rhs->length - lhs->length) * sizeof(ull));
-        lhs->length = rhs->length;
-    }
-
-    ull carrySet;
-    ull loops = lhs->length;
-    asm ("mov $0, %%rax;"
-         "mov %3, %%rcx;"
-         "clc;"
-         "bint_add_loop%=:"
-             "mov (%2, %%rax, 8), %%rbx;"
-             "adc %%rbx, (%1, %%rax, 8);"
-             "inc %%rax;"
-         "loop bint_add_loop%=;"
-         "mov $0, %%rax;"
-         "adc $0, %%rax;"
-         "mov %%rax, %0;"
-         : "=r" (carrySet)
-         : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
-         : "%rax", "%rbx", "%rcx"
-        );
-
-    if (carrySet) {
+    if (carry) {
         lhs->length += 1;
         lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
         lhs->values[lhs->length - 1] = 1;
     }
 
-    return bint_shrink(lhs);
+    return lhs;
 }
 
-BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg) {
-    if (lhs->length > rhs->length) {
-        rhs->values = realloc(rhs->values, sizeof(ull) * lhs->length);
-        memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(ull));
-    }
+BigInt* bint_sub(BigInt* lhs, BigInt* rhs, bool* neg) {
+    bool carry;
+    bint_subNoLastCarry(lhs, rhs, &carry);
 
-    ull carrySet;
-    ull loops = lhs->length;
-    asm ("mov $0, %%rax;"
-         "mov %3, %%rcx;"
-         "clc;"
-         "bint_sub_loop%=:"
-             "mov (%2, %%rax, 8), %%rbx;"
-             "sbb %%rbx, (%1, %%rax, 8);"
-             "inc %%rax;"
-         "loop bint_sub_loop%=;"
-         "mov $0, %%rax;"
-         "adc $0, %%rax;"
-         "mov %%rax, %0;"
-         : "=r" (carrySet)
-         : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
-         : "%rax", "%rbx", "%rcx"
-        );
-
-    if (carrySet) {
+    if (carry) {
         for (uint i = 0; i < lhs->length; ++i) {
             lhs->values[i] = ~(lhs->values[i]);
         }
         bint_addWord(lhs, 1, 0);
     }
 
-    if (neg) *neg = carrySet;
-    return bint_shrink(lhs);
+    if (neg) *neg = carry;
+    return lhs;
 }
 
 void* _thread_bint_mulKaratsuba(void* _args) {
@@ -422,72 +389,72 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
     return ret;
 }
 
-BigInt* bint_div(BigInt* _lhs, BigInt* _rhs, BigInt** rem) {
-    if (_lhs->length < _rhs->length) {
-        if (rem) *rem = bint_clone(_lhs);
-        return bint_fromWord(0);
+BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** _rem) {
+    BigInt* quot, rem;
+    quot = bint_divClassical(lhs, rhs, &rem);
+    if (_rem) *_rem = rem;
+    return quot;
+}
+
+BigInt* bint_addNoLastCarry(BigInt* lhs, BigInt* rhs, bool* _carry) {
+    if (lhs->length > rhs->length) {
+        rhs->values = realloc(rhs->values, sizeof(ull) * lhs->length);
+        memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(ull));
     }
-    BigInt* lhs = bint_clone(_lhs);
-    BigInt* rhs = bint_clone(_rhs);
-
-    ull normFactor;
-    normFactor = WORD_MAX / rhs->values[rhs->length - 1];
-    if (rhs->values[rhs->length - 1] < HALF_SIZE) normFactor = 1;
-
-    bint_mulWord(lhs, normFactor, 0);
-    bint_mulWord(rhs, normFactor, 0);
-
-    assert(rhs->length == _rhs->length);
-
-    BigInt* quot = malloc(sizeof(BigInt));
-    quot->length = _lhs->length - rhs->length + 1;
-    quot->values = malloc(sizeof(ull) * quot->length);
-
-    if (lhs->length == _lhs->length) {
-        lhs->length += 1;
-        lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
-        lhs->values[lhs->length - 1] = 0;
+    else if (lhs->length < rhs->length) {
+        lhs->values = realloc(lhs->values, sizeof(ull) * rhs->length);
+        memset(lhs->values + lhs->length, 0, (rhs->length - lhs->length) * sizeof(ull));
+        lhs->length = rhs->length;
     }
 
-    assert(lhs->length == _lhs->length + 1);
+    ull carry;
+    ull loops = lhs->length;
+    asm ("mov $0, %%rax;"
+         "mov %3, %%rcx;"
+         "clc;"
+         "bint_add_loop%=:"
+             "mov (%2, %%rax, 8), %%rbx;"
+             "adc %%rbx, (%1, %%rax, 8);"
+             "inc %%rax;"
+         "loop bint_add_loop%=;"
+         "mov $0, %%rax;"
+         "adc $0, %%rax;"
+         "mov %%rax, %0;"
+         : "=r" (carry)
+         : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
+         : "%rax", "%rbx", "%rcx"
+        );
 
-    for (uint i = quot->length; i != 0;) {
-        --i;
-        ull dividendHi = lhs->values[i + rhs->length];
-        ull dividendLo = lhs->values[i + rhs->length - 1];
-        ull divisor    = rhs->values[rhs->length - 1];
+    if (_carry) *_carry = carry;
+    return bint_shrink(lhs);
+}
 
-        ull testQuot = bigDiv(dividendHi, dividendLo, divisor, NULL, NULL);
-        BigInt* testVal = bint_mulWord(bint_clone(rhs), testQuot, 0);
-
-        BigInt pseudoShifted;
-        pseudoShifted.length = rhs->length + 1;
-        pseudoShifted.values = lhs->values + i;
-
-        int neg;
-        bint_sub(&pseudoShifted, testVal, &neg);
-
-        int count = 0;
-        while (neg) {
-            assert(++count <= 2);
-            bint_shrink(&pseudoShifted);
-            bint_sub(&pseudoShifted, rhs, &neg);
-            neg = !neg;
-            --testQuot;
-        }
-
-        quot->values[i] = testQuot;
-        bint_destroy(testVal);
+BigInt* bint_subNoLastCarry(BigInt* lhs, BigInt* rhs, bool* _carry) {
+    if (lhs->length > rhs->length) {
+        rhs->values = realloc(rhs->values, sizeof(ull) * lhs->length);
+        memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(ull));
     }
 
-    if (rem) {
-        bint_divWord(lhs, normFactor, NULL);
-        *rem = bint_shrink(lhs);
-    }
-    else bint_destroy(lhs);
-    bint_destroy(rhs);
+    ull carry;
+    ull loops = lhs->length;
+    asm ("mov $0, %%rax;"
+         "mov %3, %%rcx;"
+         "clc;"
+         "bint_sub_loop%=:"
+             "mov (%2, %%rax, 8), %%rbx;"
+             "sbb %%rbx, (%1, %%rax, 8);"
+             "inc %%rax;"
+         "loop bint_sub_loop%=;"
+         "mov $0, %%rax;"
+         "adc $0, %%rax;"
+         "mov %%rax, %0;"
+         : "=r" (carry)
+         : "r"  (lhs->values), "r" (rhs->values), "r" (loops)
+         : "%rax", "%rbx", "%rcx"
+        );
 
-    return bint_shrink(quot);
+    if (_carry) *_carry = carry;
+    return bint_shrink(lhs);
 }
 
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs) {
@@ -550,6 +517,86 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     bint_destroy(p2);
 
     return bint_shrink(ret);
+}
+
+// Based on Knuth, The Art of Computer Programming, Vol II, pg 272, Algorithm D
+BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    BigInt* u = bint_clone(lhs);
+    BigInt* v = bint_clone(rhs);
+
+    uint n = rhs->length;
+    uint m = lhs->length - rhs->length - 1;
+
+    BigInt* q = malloc(sizeof(BigInt));
+    q->length = m + 1;
+    q->values = malloc(sizeof(ull) * q->length);
+
+    // Normalize (D1)
+    ull d = WORD_MAX / rhs->values[n - 1];
+    bint_mulWord(u, d, 0);
+    bint_mulWord(v, d, 0);
+
+    if (u->length < n + m) {
+        u->length = n + m;
+        u->values = realloc(u->values, sizeof(ull) * (n + m));
+        u->values[n + m - 1] = 0;
+    }
+
+    // Initialize j (D2) / Loop on j (D7)
+    for (uint j = m + 1; j != 0;) {
+        --j;
+        // Calculate q_hat (D3)
+        bool over;
+        ull q_hat, r_hat;
+        q_hat = bigDiv(u->values[j+n], u->values[j+n-1], v->values[n-1], &r_hat, &over);
+
+        ull testHi, testLo;
+        testLo = bigMul(q_hat, v->values[n-2], &testHi);
+
+        uint corrections = 0;
+        while (over || testHi > r_hat || (testHi == r_hat && testLo > u->values[j + n - 2])) {
+            ++corrections;
+            --q_hat;
+            r_hat += v->values[n - 1];
+            over = false;
+            if (r_hat < v->values[n - 1]) break;
+            if (corrections >= 2) break;
+        }
+
+        // Multiply and subtract (D4)
+        BigInt uPart;
+        uPart.values = u->values + j;
+        uPart.length = n + 1;
+
+        BigInt* qv = bint_clone(v);
+        bint_mulWord(qv, q_hat, 0);
+
+        bool neg;
+        bint_subNoLastCarry(&uPart, qv, &neg);
+
+        bint_destroy(qv);
+
+        // Test remainder (D5)
+        q->values[j] = q_hat;
+
+        if (neg) {
+            // Add back (D6)
+            q->values[j] -= 1;
+            bint_addNoLastCarry(&uPart, v, NULL);
+        }
+    }
+
+    if (rem) {
+        // Unnormalize (D8)
+        bint_divWord(u, d, NULL);
+        *rem = bint_shrink(u);
+    }
+    else {
+        bint_destroy(u);
+    }
+    bint_destroy(v);
+
+    return bint_shrink(q);
 }
 
 BigInt* bint_leftWordShift(BigInt* lhs, uint words) {
