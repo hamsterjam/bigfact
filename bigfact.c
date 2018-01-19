@@ -37,6 +37,7 @@ BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp);            /* inplac
 BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* neg);  /* inplace */
 BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp);            /* inplace */
 BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* rem);               /* inplace */
+ull     bint_modWord(BigInt* lhs, ull rhsVal);
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs);                            /* inplace */
 BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg);                  /* inplace */
@@ -270,6 +271,28 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
 
     if (_rem) *_rem = rem;
     return bint_shrink(lhs);
+}
+
+ull bint_modWord(BigInt* lhs, ull rhsVal) {
+    //TODO// There is probably a modulus instruction that can give me a remainder if I
+          // don't care about the quotient. That would probably use fewer cycles than
+          // DIV. As it stands, this is only slightly faster than bint_divWord.
+    ull radMod;
+    bigDiv(1, 0, rhsVal, &radMod, NULL);
+    ull ret = lhs->values[lhs->length - 1] % rhsVal;
+    for (uint i = lhs->length - 1; i != 0;) {
+        --i;
+        ull resHi, resLo;
+        resLo = bigMul(ret, radMod, &resHi);
+
+        resLo += lhs->values[i] % rhsVal;
+        if (resLo < lhs->values[i] % rhsVal)
+            resHi += 1;
+
+        bigDiv(resHi, resLo, rhsVal, &ret, NULL);
+    }
+
+    return ret;
 }
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs) {
