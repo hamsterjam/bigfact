@@ -31,7 +31,11 @@ BigInt* bint_clone(BigInt* num);
 BigInt* bint_shrink(BigInt* num);
 void bint_destroy(BigInt* num);
 void bint_print(BigInt* num);
-void bint_mulPrint(BigInt* num);
+
+BigInt* bint_toDecClassical(BigInt* num);
+BigInt* bint_toDecDivAndConq(BigInt* num);
+
+bool bint_lessThan(BigInt* lhs, BigInt* rhs);
 
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp);            /* inplace */
 BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* neg);  /* inplace */
@@ -160,30 +164,98 @@ void bint_destroy(BigInt* num) {
 }
 
 void bint_print(BigInt* num) {
-    uint decimalLength = (uint) ((double) num->length * WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH) + 1;
-    ull* decimalValues = malloc(sizeof(ull) * decimalLength);
+    BigInt* dec = bint_toDecClassical(num);
 
-    BigInt* runningDividend = bint_clone(num);
-    for (uint i = 0; i < decimalLength; ++i) {
-        ull rem;
-        bint_divWord(runningDividend, DECIMAL_SIZE, &rem);
-        decimalValues[i] = rem;
-
-        if (runningDividend->values[0] == 0 && runningDividend->length == 1){
-            decimalLength = i+1;
-            break;
-        }
-    }
-    bint_destroy(runningDividend);
-
-    printf("%llu", decimalValues[decimalLength - 1]);;
-    for (uint i = decimalLength - 1; i != 0;) {
+    printf("%llu", dec->values[dec->length - 1]);;
+    for (uint i = dec->length - 1; i != 0;) {
         --i;
-        printf("%019llu", decimalValues[i]);
+        printf("%019llu", dec->values[i]);
     }
     printf("\n");
 
-    free(decimalValues);
+    bint_destroy(dec);
+}
+
+void bint_printDivAndConq(BigInt* num) {
+    BigInt* dec = bint_toDecDivAndConq(num);
+
+    printf("%llu", dec->values[dec->length - 1]);;
+    for (uint i = dec->length - 1; i != 0;) {
+        --i;
+        printf("%019llu", dec->values[i]);
+    }
+    printf("\n");
+
+    bint_destroy(dec);
+}
+
+
+BigInt* bint_toDecClassical(BigInt* num) {
+    double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
+
+    BigInt* ret = malloc(sizeof(BigInt));
+    ret->length = (uint) ((double) num->length * binToDecLengthFactor) + 1;
+    ret->values = malloc(sizeof(ull) * ret->length);
+
+    BigInt* dividend = bint_clone(num);
+    for (uint i = 0; i < ret->length; ++i) {
+        ull rem;
+        bint_divWord(dividend, DECIMAL_SIZE, &rem);
+        ret->values[i] = rem;
+    }
+    bint_destroy(dividend);
+
+    return bint_shrink(ret);
+}
+
+BigInt* bint_toDecDivAndConq(BigInt* num) {
+    double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
+    const int CUTOFF = 10;
+    if (num->length < CUTOFF) {
+        return bint_toDecClassical(num);
+    }
+
+    BigInt* ret = malloc(sizeof(BigInt));
+    ret->length = (double) num->length * binToDecLengthFactor + 1;
+    ret->values = malloc(sizeof(ull) * ret->length);
+    memset(ret->values, 0, sizeof(ull) * ret->length);
+
+    uint wordLength = ret->length / 2;
+    BigInt* divisor = bint_fromWord(1e19);
+    for (uint i = 1; i < wordLength; ++i) {
+        bint_mulWord(divisor, 1e19, 0);
+    }
+
+    BigInt *numLo, *numHi;
+    numHi = bint_div(num, divisor, &numLo);
+
+    bint_destroy(divisor);
+
+    BigInt* retHi = bint_toDecDivAndConq(numHi);
+    BigInt* retLo = bint_toDecDivAndConq(numLo);
+
+    memcpy(ret->values,              retLo->values, sizeof(ull) * retLo->length);
+    memcpy(ret->values + wordLength, retHi->values, sizeof(ull) * retHi->length);
+
+    bint_destroy(numHi);
+    bint_destroy(numLo);
+    bint_destroy(retHi);
+    bint_destroy(retLo);
+
+    return bint_shrink(ret);
+}
+
+bool bint_lessThan(BigInt* lhs, BigInt* rhs) {
+    if (lhs->length != rhs->length) {
+        return lhs->length < rhs->length;
+    }
+
+    for (uint i = lhs->length; i != 0;) {
+        --i;
+        if (lhs->values[i] < rhs->values[i]) return true;
+        if (lhs->values[i] > rhs->values[i]) return false;
+    }
+    return false;
 }
 
 BigInt* bint_addWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
@@ -287,9 +359,6 @@ BigInt* bint_divWord(BigInt* lhs, ull rhsVal, ull* _rem) {
 }
 
 ull bint_modWord(BigInt* lhs, ull rhsVal) {
-    //TODO// There is probably a modulus instruction that can give me a remainder if I
-          // don't care about the quotient. That would probably use fewer cycles than
-          // DIV. As it stands, this is only slightly faster than bint_divWord.
     ull radMod;
     bigDiv(1, 0, rhsVal, &radMod, NULL);
     ull ret = lhs->values[lhs->length - 1] % rhsVal;
@@ -390,7 +459,7 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
 }
 
 BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** _rem) {
-    BigInt* quot, rem;
+    BigInt *quot, *rem;
     quot = bint_divClassical(lhs, rhs, &rem);
     if (_rem) *_rem = rem;
     return quot;
@@ -525,21 +594,30 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     BigInt* v = bint_clone(rhs);
 
     uint n = rhs->length;
-    uint m = lhs->length - rhs->length - 1;
+    uint m = lhs->length - rhs->length;
 
     BigInt* q = malloc(sizeof(BigInt));
     q->length = m + 1;
     q->values = malloc(sizeof(ull) * q->length);
 
     // Normalize (D1)
-    ull d = WORD_MAX / rhs->values[n - 1];
+    ull d;
+    if (v->values[n-1] > HALF_SIZE) {
+        d = 1;
+    }
+    else {
+        d = HALF_SIZE;
+    }
     bint_mulWord(u, d, 0);
     bint_mulWord(v, d, 0);
 
-    if (u->length < n + m) {
-        u->length = n + m;
-        u->values = realloc(u->values, sizeof(ull) * (n + m));
-        u->values[n + m - 1] = 0;
+    v->values = realloc(v->values, sizeof(ull) * (n+1));
+    v->values[n] = 0;
+
+    if (u->length < n + m + 1) {
+        u->length = n + m + 1;
+        u->values = realloc(u->values, sizeof(ull) * (n + m + 1));
+        u->values[n + m] = 0;
     }
 
     // Initialize j (D2) / Loop on j (D7)
@@ -547,21 +625,29 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
         --j;
         // Calculate q_hat (D3)
         bool over;
-        ull q_hat, r_hat;
-        q_hat = bigDiv(u->values[j+n], u->values[j+n-1], v->values[n-1], &r_hat, &over);
+        ull q_hat;
+        q_hat = bigDiv(u->values[j+n], u->values[j+n-1], v->values[n-1], NULL, &over);
+        if (over) q_hat = WORD_MAX;
 
-        ull testHi, testLo;
-        testLo = bigMul(q_hat, v->values[n-2], &testHi);
+        BigInt vHi;
+        vHi.length = 3;
+        vHi.values = v->values + n-2;
 
-        uint corrections = 0;
-        while (over || testHi > r_hat || (testHi == r_hat && testLo > u->values[j + n - 2])) {
-            ++corrections;
+        BigInt* qvHi = bint_clone(&vHi);
+        bint_mulWord(qvHi, q_hat, 0);
+
+        BigInt uHi;
+        uHi.length = 3;
+        uHi.values = u->values + j+n-2;
+
+        uint loops = 0;
+        while (q_hat != 0 && bint_lessThan(&uHi, qvHi)) {
+            assert(++loops <= 2);
+            bint_sub(qvHi, &vHi, NULL);
             --q_hat;
-            r_hat += v->values[n - 1];
-            over = false;
-            if (r_hat < v->values[n - 1]) break;
-            if (corrections >= 2) break;
         }
+
+        bint_destroy(qvHi);
 
         // Multiply and subtract (D4)
         BigInt uPart;
@@ -769,7 +855,7 @@ int main(int argc, char** argv) {
         ret = prod;
     }
 
-    bint_print(ret);
+    bint_printDivAndConq(ret);
 
     bint_destroy(ret);
     free(threadPool);
