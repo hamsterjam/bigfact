@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
-#include <assert.h>
 #include <math.h>   // M_LN10, M_LN2
 #include <string.h> // memcpy, memset
 #include <pthread.h>
@@ -105,6 +104,9 @@ ull bigMul(ull lhs, ull rhs, ull* _over) {
 }
 
 ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem, int* overflow) {
+    if (rhs == 0) {
+        return lhsLo/rhs;
+    }
     if (rhs <= lhsHi) {
         if (overflow) *overflow = true;
         if (_rem) {
