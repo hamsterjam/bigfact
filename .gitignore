@@ -1,0 +1,5 @@
+#Ignore all files except the things I hand pick
+*
+!bigfact.c
+!Makefile
+!.gitignore
