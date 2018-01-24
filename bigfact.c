@@ -29,10 +29,10 @@ BigInt* bint_fromWord(ull value);
 BigInt* bint_clone(BigInt* num);
 BigInt* bint_shrink(BigInt* num);
 void bint_destroy(BigInt* num);
-void bint_print(BigInt* num);
+void bint_print(BigInt* num, uint threads);
 
 BigInt* bint_toDecClassical(BigInt* num);
-BigInt* bint_toDecDivAndConq(BigInt* num);
+BigInt* bint_toDecDivAndConq(BigInt* num, uint threads);
 
 bool bint_lessThan(BigInt* lhs, BigInt* rhs);
 
@@ -188,21 +188,8 @@ void bint_destroy(BigInt* num) {
     free(num);
 }
 
-void bint_print(BigInt* num) {
-    BigInt* dec = bint_toDecClassical(num);
-
-    printf("%llu", dec->values[dec->length - 1]);;
-    for (uint i = dec->length - 1; i != 0;) {
-        --i;
-        printf("%019llu", dec->values[i]);
-    }
-    printf("\n");
-
-    bint_destroy(dec);
-}
-
-void bint_printDivAndConq(BigInt* num) {
-    BigInt* dec = bint_toDecDivAndConq(num);
+void bint_print(BigInt* num, uint threads) {
+    BigInt* dec = bint_toDecDivAndConq(num, threads);
 
     printf("%llu", dec->values[dec->length - 1]);;
     for (uint i = dec->length - 1; i != 0;) {
@@ -233,11 +220,28 @@ BigInt* bint_toDecClassical(BigInt* num) {
     return bint_shrink(ret);
 }
 
-BigInt* bint_toDecDivAndConq(BigInt* num) {
+typedef struct _info_bint_toDecDivAndConq {
+    BigInt*          num;
+    pthread_mutex_t* poolLock;
+    pthread_t*       threadPool;
+    uint*            currThreads;
+    uint             maxThreads;
+} _info_bint_toDecDivAndConq;
+
+void* _thread_bint_toDecDivAndConq(void* _info) {
+    _info_bint_toDecDivAndConq* info = (_info_bint_toDecDivAndConq*) _info;
+
+    BigInt*          num         = info->num;
+    pthread_mutex_t* poolLock    = info->poolLock;
+    uint*            currThreads = info->currThreads;
+    uint             maxThreads  = info->maxThreads;
+
+    free(_info);
+
     const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
     const int CUTOFF = 10;
     if (num->length < CUTOFF) {
-        return bint_toDecClassical(num);
+        return (void*) bint_toDecClassical(num);
     }
 
     BigInt* ret = malloc(sizeof(BigInt));
@@ -256,8 +260,40 @@ BigInt* bint_toDecDivAndConq(BigInt* num) {
 
     bint_destroy(divisor);
 
-    BigInt* retHi = bint_toDecDivAndConq(numHi);
-    BigInt* retLo = bint_toDecDivAndConq(numLo);
+    bool splitThread = false;
+    pthread_mutex_lock(poolLock);
+    if (*currThreads < maxThreads) {
+        splitThread = true;
+        *currThreads += 1;
+    }
+    pthread_mutex_unlock(poolLock);
+
+    BigInt *retHi, *retLo;
+
+    _info_bint_toDecDivAndConq* infoHi = malloc(sizeof(_info_bint_toDecDivAndConq));
+    infoHi->num         = numHi;
+    infoHi->poolLock    = poolLock;
+    infoHi->currThreads = currThreads;
+    infoHi->maxThreads  = maxThreads;
+
+    pthread_t split;
+    if (splitThread) pthread_create(&split, NULL, _thread_bint_toDecDivAndConq, (void*) infoHi);
+    else retHi = _thread_bint_toDecDivAndConq((void*) infoHi);
+
+    _info_bint_toDecDivAndConq* infoLo = malloc(sizeof(_info_bint_toDecDivAndConq));
+    infoLo->num         = numLo;
+    infoLo->poolLock    = poolLock;
+    infoLo->currThreads = currThreads;
+    infoLo->maxThreads  = maxThreads;
+
+    retLo = _thread_bint_toDecDivAndConq((void*) infoLo);
+
+    if (splitThread) {
+        pthread_join(split, (void**) &retHi);
+        pthread_mutex_lock(poolLock);
+        *currThreads -= 1;
+        pthread_mutex_unlock(poolLock);
+    }
 
     memcpy(ret->values,              retLo->values, sizeof(ull) * retLo->length);
     memcpy(ret->values + wordLength, retHi->values, sizeof(ull) * retHi->length);
@@ -267,7 +303,26 @@ BigInt* bint_toDecDivAndConq(BigInt* num) {
     bint_destroy(retHi);
     bint_destroy(retLo);
 
-    return bint_shrink(ret);
+    return (void*) bint_shrink(ret);
+}
+
+BigInt* bint_toDecDivAndConq(BigInt* num, uint threads) {
+    pthread_mutex_t poolLock;
+    pthread_mutex_init(&poolLock, NULL);
+
+    uint currThreads = 1;
+
+    _info_bint_toDecDivAndConq* info = malloc(sizeof(_info_bint_toDecDivAndConq));
+    info->num         = num;
+    info->poolLock    = &poolLock;
+    info->currThreads = &currThreads;
+    info->maxThreads  = threads;
+
+    BigInt* ret = _thread_bint_toDecDivAndConq((void*) info);
+
+    pthread_mutex_destroy(&poolLock);
+
+    return ret;
 }
 
 bool bint_lessThan(BigInt* lhs, BigInt* rhs) {
@@ -874,7 +929,7 @@ int main(int argc, char** argv) {
         ret = prod;
     }
 
-    bint_printDivAndConq(ret);
+    bint_print(ret, threads);
 
     bint_destroy(ret);
     free(threadPool);
