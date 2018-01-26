@@ -54,8 +54,8 @@ BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs);
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
 BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem);
 
-BigInt* bint_leftWordShift(BigInt* lhs, uint rhs);                     /* inplace */
-BigInt* bint_rightWordShift(BigInt* lhs, uint rhs);                    /* inplace */
+BigInt* bint_leftShift( BigInt* lhs, uint bits, uint words);            /* inplace */
+BigInt* bint_rightShift(BigInt* lhs, uint bits, uint words);            /* inplace */
 
 BigInt* bint_radMulWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad); /* inplace */
 BigInt* bint_radAddWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad); /* inplace */
@@ -138,11 +138,11 @@ ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem, int* overflow) {
 
 ull div3by2(BigInt* u, BigInt* v) {
     BigInt* rn = bint_fromWord(bigDiv(1, 0, v->values[1], NULL, NULL));
-    bint_leftWordShift(rn, 2);
+    bint_leftShift(rn, 0, 2);
     for (uint n = 0; n < 6; ++n) {
         BigInt* a = bint_mulClassical(rn, rn);
         BigInt* b = bint_mulClassical(a, v);
-        bint_rightWordShift(b, 4);
+        bint_rightShift(b, 0, 4);
 
         bint_mulWord(rn, 2, 0);
         bint_sub(rn, b, NULL);
@@ -417,7 +417,7 @@ BigInt* bint_mulWord(BigInt* lhs, ull rhsVal, uint rhsExp) {
 
     bint_add(lhs, &carry);
     bint_shrink(lhs);
-    bint_leftWordShift(lhs, rhsExp);
+    bint_leftShift(lhs, 0, rhsExp);
 
     free(carry.values);
     return lhs;
@@ -527,7 +527,7 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
         pthread_join(threadPool[i], (void**) &part);
         bint_destroy(slices[i]);
 
-        bint_leftWordShift(part, lengthPerThread * i);
+        bint_leftShift(part, 0, lengthPerThread * i);
         bint_add(ret, part);
 
         bint_destroy(part);
@@ -644,7 +644,7 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     p2 = bint_mulKaratsuba(lhsHi, rhsHi);
 
     ret = bint_clone(p2);
-    bint_leftWordShift(ret, 2*halfLength);
+    bint_leftShift(ret, 0, 2*halfLength);
     bint_add(ret, p0);
 
     bint_add(lhsHi, lhsLo);
@@ -654,7 +654,7 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
     bint_sub(p1, p0, NULL);
     bint_sub(p1, p2, NULL);
 
-    bint_leftWordShift(p1, halfLength);
+    bint_leftShift(p1, 0, halfLength);
     bint_add(ret, p1);
 
     bint_destroy(lhsLo);
@@ -776,6 +776,63 @@ BigInt* bint_rightWordShift(BigInt*lhs, uint words) {
     return lhs;
 }
 
+BigInt* bint_rightShift(BigInt* lhs, uint bits, uint words) {
+    lhs->length -= words;
+
+    uint lBits = WORD_LENGTH - bits;
+    uint rBits = bits;
+
+    ull mask = (1L << lBits) - 1;
+    if (bits == 0) mask = ~mask;
+
+    for (uint i = 0; i < lhs->length; ++i) {
+        ull carry;
+        carry  =  lhs->values[i + words] << lBits;
+        carry &= ~mask;
+
+        ull val;
+        val  = lhs->values[i + words] >> rBits;
+        val &= mask;
+
+        lhs->values[i] = val;
+        if (i != 0) lhs->values[i-1] |= carry;
+    }
+
+    return lhs;
+}
+
+BigInt* bint_leftShift(BigInt* lhs, uint bits, uint words) {
+    lhs->length += words;
+    lhs->length += 1;
+    lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
+
+    uint lBits = bits;
+    uint rBits = WORD_LENGTH - bits;
+
+    ull mask = (1L << lBits) - 1;
+
+    lhs->values[lhs->length - 1] = 0;
+    for (uint i = lhs->length - 1; i != words;) {
+        --i;
+        ull carry;
+        carry  = lhs->values[i - words] >> rBits;
+        carry &= mask;
+
+        ull val;
+        val  =  lhs->values[i - words] << lBits;
+        val &= ~mask;
+
+        lhs->values[i]      = val;
+        lhs->values[i + 1] |= carry;
+    }
+
+    memset(lhs->values, 0, sizeof(ull) * words);
+
+    if (lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+
+    return lhs;
+}
+
 BigInt* bint_radMulWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad) {
     BigInt carry;
     carry.length = lhs->length + 1;
@@ -793,7 +850,7 @@ BigInt* bint_radMulWord(BigInt* lhs, ull rhsVal, ull rhsExp, ull rad) {
 
     bint_radAdd(lhs, &carry, rad);
     bint_shrink(lhs);
-    bint_leftWordShift(lhs, rhsExp);
+    bint_leftShift(lhs, 0, rhsExp);
 
     free(carry.values);
     return lhs;
