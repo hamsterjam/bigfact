@@ -137,26 +137,36 @@ ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem, int* overflow) {
 }
 
 ull div3by2(BigInt* u, BigInt* v) {
-    BigInt* rn = bint_fromWord(bigDiv(1, 0, v->values[1], NULL, NULL));
-    bint_leftShift(rn, 0, 2);
-    for (uint n = 0; n < 10; ++n) {
-        BigInt* a = bint_mulClassical(rn, rn);
-        BigInt* b = bint_mulClassical(a, v);
-        bint_rightShift(b, 0, 4);
+    ull rem;
+    bool over;
+    ull q = bigDiv(u->values[2], u->values[1], v->values[1], &rem, &over);
 
-        bint_mulWord(rn, 2, 0);
-        bint_sub(rn, b, NULL);
+    BigInt* R;
+    if (over) {
+        q = WORD_MAX;
+        R = bint_leftShift(bint_fromWord(u->values[2]), 0, 1);
+        R->values[0] = u->values[1];
 
-        bint_destroy(a);
-        bint_destroy(b);
+        bint_subWord(R, v->values[1], 1, NULL);
+        bint_addWord(R, v->values[1], 0);
+    }
+    else {
+        R = bint_fromWord(rem);
     }
 
-    BigInt* q1 = bint_mulClassical(u, rn);
-    ull q2 = q1->values[4];
-    bint_destroy(q1);
-    bint_destroy(rn);
+    BigInt* D = bint_mulWord(bint_fromWord(q), v->values[0], 0);
+    bint_leftShift(R, 0, 1);
+    R->values[0] = u->values[0];
+    bool neg;
+    bint_subNoLastCarry(R, D, &neg);
 
-    return q2;
+    while (neg) {
+        --q;
+        bint_addNoLastCarry(R, v, &neg);
+        neg = !neg;
+    }
+
+    return q;
 }
 
 BigInt* bint_fromWord(ull value) {
