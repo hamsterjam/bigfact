@@ -139,7 +139,7 @@ ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem, int* overflow) {
 ull div3by2(BigInt* u, BigInt* v) {
     BigInt* rn = bint_fromWord(bigDiv(1, 0, v->values[1], NULL, NULL));
     bint_leftShift(rn, 0, 2);
-    for (uint n = 0; n < 6; ++n) {
+    for (uint n = 0; n < 10; ++n) {
         BigInt* a = bint_mulClassical(rn, rn);
         BigInt* b = bint_mulClassical(a, v);
         bint_rightShift(b, 0, 4);
@@ -681,15 +681,11 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     q->values = malloc(sizeof(ull) * q->length);
 
     // Normalize (D1)
-    ull d;
-    if (v->values[n-1] > HALF_SIZE) {
-        d = 1;
-    }
-    else {
-        d = HALF_SIZE;
-    }
-    bint_mulWord(u, d, 0);
-    bint_mulWord(v, d, 0);
+    uint d = 0;
+    for (ull top = v->values[n-1]; top < (1L << 63); top <<= 1) ++d;
+
+    bint_leftShift(u, d, 0);
+    bint_leftShift(v, d, 0);
 
     v->values = realloc(v->values, sizeof(ull) * (n+1));
     v->values[n] = 0;
@@ -739,7 +735,7 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
 
     if (rem) {
         // Unnormalize (D8)
-        bint_divWord(u, d, NULL);
+        bint_rightShift(u, d, 0);
         *rem = bint_shrink(u);
     }
     else {
@@ -748,32 +744,6 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     bint_destroy(v);
 
     return bint_shrink(q);
-}
-
-BigInt* bint_leftWordShift(BigInt* lhs, uint words) {
-    lhs->length += words;
-    lhs->values = realloc(lhs->values, sizeof(ull) * lhs->length);
-
-    for (uint i = lhs->length; i != words;) {
-        --i;
-        lhs->values[i] = lhs->values[i - words];
-    }
-
-    for (uint i = words; i != 0;) {
-        --i;
-        lhs->values[i] = 0;
-    }
-
-    return lhs;
-}
-
-BigInt* bint_rightWordShift(BigInt*lhs, uint words) {
-    lhs->length -= words;
-    for (uint i = 0; i < lhs->length; ++i) {
-        lhs->values[i] = lhs->values[i + words];
-    }
-
-    return lhs;
 }
 
 BigInt* bint_rightShift(BigInt* lhs, uint bits, uint words) {
