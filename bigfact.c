@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <assert.h>
 #include <math.h>   // M_LN10, M_LN2
 #include <string.h> // memcpy, memset
 #include <pthread.h>
@@ -53,6 +54,7 @@ BigInt* bint_subNoLastCarry(BigInt* lhs, BigInt* rhs, bool* carry);    /* inplac
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs);
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
 BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem);
+BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem);
 
 BigInt* bint_leftShift( BigInt* lhs, uint bits, uint words);            /* inplace */
 BigInt* bint_rightShift(BigInt* lhs, uint bits, uint words);            /* inplace */
@@ -136,7 +138,7 @@ ull bigDiv(ull lhsHi, ull lhsLo, ull rhs, ull* _rem, int* overflow) {
     return ret;
 }
 
-ull div3by2(BigInt* u, BigInt* v) {
+ull div3by2(BigInt* u, BigInt* v, BigInt** _rem) {
     ull rem;
     bool over;
     ull q = bigDiv(u->values[2], u->values[1], v->values[1], &rem, &over);
@@ -166,6 +168,10 @@ ull div3by2(BigInt* u, BigInt* v) {
         neg = !neg;
     }
 
+    bint_destroy(D);
+
+    if (_rem) *_rem = R;
+    else bint_destroy(R);
     return q;
 }
 
@@ -388,9 +394,10 @@ BigInt* bint_subWord(BigInt* lhs, ull rhsVal, uint rhsExp, int* _neg) {
         memset(lhs->values + lhs->length, 0, (diffLength - lhs->length) * sizeof(ull));
     }
 
+    ull oldVal = lhs->values[rhsExp] - rhsVal;
     lhs->values[rhsExp] -= rhsVal;
     bool neg = false;
-    if (lhs->values[rhsExp] > rhsVal) {
+    if (lhs->values[rhsExp] > oldVal) {
         neg = true;
         for (uint i = rhsExp + 1; i < diffLength; ++i) {
             lhs->values[i] -= 1;
@@ -550,7 +557,7 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
 
 BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** _rem) {
     BigInt *quot, *rem;
-    quot = bint_divClassical(lhs, rhs, &rem);
+    quot = bint_divDivAndConq(lhs, rhs, &rem);
     if (_rem) *_rem = rem;
     return quot;
 }
@@ -680,6 +687,11 @@ BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs) {
 
 // Based on Knuth, The Art of Computer Programming, Vol II, pg 272, Algorithm D
 BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    if (lhs->length < rhs->length) {
+        if (rem) *rem = bint_clone(lhs);
+        return bint_fromWord(0);
+    }
+
     BigInt* u = bint_clone(lhs);
     BigInt* v = bint_clone(rhs);
 
@@ -718,7 +730,7 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
         uHi.length = 3;
         uHi.values = u->values + j+n-2;
 
-        ull q_hat = div3by2(&uHi, &vHi);
+        ull q_hat = div3by2(&uHi, &vHi, NULL);
 
         // Multiply and subtract (D4)
         BigInt uPart;
@@ -756,7 +768,157 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     return bint_shrink(q);
 }
 
+BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem);
+BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem);
+
+BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    const uint CUTOFF = 10;
+    if (rhs->length < CUTOFF) {
+        return bint_divClassical(lhs, rhs, rem);
+    }
+
+    if (lhs->length < rhs->length) {
+        if (rem) *rem = bint_clone(lhs);
+        return bint_fromWord(0);
+    }
+
+    uint wordLength = (rhs->length + 1) / 2;
+
+    BigInt* u = bint_clone(lhs);
+    BigInt* v = bint_clone(rhs);
+
+    // Renormalize
+    uint D = 0;
+    if (wordLength * 2 > v->length) D = 1;
+
+    bint_leftShift(u, 0, D);
+    bint_leftShift(v, 0, D);
+
+    BigInt* uHi3 = hi(u, wordLength);
+    BigInt* uLo1 = lo(u, wordLength);
+
+    BigInt* R1;
+    BigInt* Q1 = bint_divDivAndConq3by2(uHi3, v, &R1);
+
+    bint_leftShift(R1, 0, wordLength);
+    bint_add(R1, uLo1);
+
+    BigInt* R2;
+    BigInt* Q2 = bint_divDivAndConq3by2(R1, v, &R2);
+
+    bint_leftShift(Q1, 0, wordLength);
+    bint_add(Q1, Q2);
+
+    bint_destroy(uHi3);
+    bint_destroy(uLo1);
+    bint_destroy(R1);
+    bint_destroy(Q2);
+
+    bint_destroy(u);
+    bint_destroy(v);
+
+    if (rem) {
+        bint_rightShift(R2, 0, D);
+        *rem = bint_shrink(R2);
+    }
+    else bint_destroy(R2);
+    return bint_shrink(Q1);
+}
+
+BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    if (lhs->length < rhs->length) {
+        if (rem) *rem = bint_clone(lhs);
+        return bint_fromWord(0);
+    }
+
+    uint wordLength = (rhs->length + 1) / 2;
+
+    BigInt* lhsHi1 = hi(lhs, wordLength*2);
+    BigInt* lhsHi2 = hi(lhs, wordLength);
+    BigInt* rhsHi  = hi(rhs, wordLength);
+
+    BigInt* lhsLo1 = lo(lhs, wordLength);
+    BigInt* rhsLo  = lo(rhs, wordLength);
+
+    BigInt *Q, *R;
+    if (bint_lessThan(lhsHi1, rhsHi)) {
+        Q = bint_divDivAndConq2by1(lhsHi2, rhsHi, &R);
+    }
+    else {
+        Q = malloc(sizeof(BigInt));
+        Q->length = wordLength;
+        Q->values = malloc(sizeof(ull) * wordLength);
+        memset(Q->values, 0xff, sizeof(ull) * wordLength);
+
+        R = bint_clone(lhsHi2);
+        BigInt* rhsHiShifted = bint_leftShift(bint_clone(rhsHi), 0, wordLength);
+        bint_sub(R, rhsHiShifted, NULL);
+        bint_add(R, rhsHi);
+
+        bint_destroy(rhsHiShifted);
+    }
+
+    BigInt* D = bint_mulKaratsuba(Q, rhsLo);
+
+    bint_leftShift(R, 0, wordLength);
+    bint_add(R, lhsLo1);
+    bool neg;
+    bint_subNoLastCarry(R, D, &neg);
+
+    while (neg) {
+        bint_subWord(Q, 1, 0, NULL);
+        bint_addNoLastCarry(R, rhs, &neg);
+        neg = !neg;
+    }
+
+    bint_destroy(lhsHi1);
+    bint_destroy(lhsHi2);
+    bint_destroy(rhsHi);
+    bint_destroy(lhsLo1);
+    bint_destroy(rhsLo);
+    bint_destroy(D);
+
+    if (rem) *rem = bint_shrink(R);
+    else bint_destroy(R);
+    return bint_shrink(Q);
+}
+
+BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    BigInt* u = bint_clone(lhs);
+    BigInt* v = bint_clone(rhs);
+
+    uint wordLength = (rhs->length > (lhs->length + 1) / 2) ? rhs->length : (lhs->length + 1) / 2;
+
+    uint D = 0;
+    if (wordLength > rhs->length) D = wordLength - rhs->length;
+
+    uint d = 0;
+    for (ull top = v->values[v->length - 1]; top < (1L << 63); top <<= 1) ++d;
+
+    bint_leftShift(u, d, D);
+    bint_leftShift(v, d, D);
+
+    BigInt* R;
+    BigInt* Q = bint_divDivAndConq2by1(u, v, &R);
+
+    bint_destroy(u);
+    bint_destroy(v);
+
+    if (rem) {
+        bint_rightShift(R, d, D);
+        *rem = R;
+    }
+    else bint_destroy(R);
+    return Q;
+}
+
 BigInt* bint_rightShift(BigInt* lhs, uint bits, uint words) {
+    if (words >= lhs->length) {
+        lhs->length = 1;
+        lhs->values[0] = 0;
+        return lhs;
+    }
+
     lhs->length -= words;
 
     uint lBits = WORD_LENGTH - bits;
