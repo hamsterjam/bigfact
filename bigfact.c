@@ -45,8 +45,11 @@ ull     bint_modWord(BigInt* lhs, ull rhsVal);
 
 BigInt* bint_add(BigInt* lhs, BigInt* rhs);                            /* inplace */
 BigInt* bint_sub(BigInt* lhs, BigInt* rhs, int* neg);                  /* inplace */
-BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads);
+BigInt* bint_mul(BigInt* lhs, BigInt* rhs);
 BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** rem);
+
+BigInt* bint_mulThreaded(BigInt* lhs, BigInt* rhs, uint threads);
+BigInt* bint_divThreaded(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads);
 
 BigInt* bint_addNoLastCarry(BigInt* lhs, BigInt* rhs, bool* carry);    /* inplace */
 BigInt* bint_subNoLastCarry(BigInt* lhs, BigInt* rhs, bool* carry);    /* inplace */
@@ -54,7 +57,7 @@ BigInt* bint_subNoLastCarry(BigInt* lhs, BigInt* rhs, bool* carry);    /* inplac
 BigInt* bint_mulClassical(BigInt* lhs, BigInt* rhs);
 BigInt* bint_mulKaratsuba(BigInt* lhs, BigInt* rhs);
 BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem);
-BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem);
+BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads);
 
 BigInt* bint_leftShift( BigInt* lhs, uint bits, uint words);            /* inplace */
 BigInt* bint_rightShift(BigInt* lhs, uint bits, uint words);            /* inplace */
@@ -271,18 +274,20 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
         bint_mulWord(divisor, 1e19, 0);
     }
 
-    BigInt *numLo, *numHi;
-    numHi = bint_div(num, divisor, &numLo);
-
-    bint_destroy(divisor);
-
     bool splitThread = false;
     pthread_mutex_lock(poolLock);
+    uint threadsPerThread = maxThreads / *currThreads;
     if (*currThreads < maxThreads) {
         splitThread = true;
         *currThreads += 1;
     }
     pthread_mutex_unlock(poolLock);
+
+    BigInt *numLo, *numHi;
+    numHi = bint_divThreaded(num, divisor, &numLo, threadsPerThread);
+
+    bint_destroy(divisor);
+
 
     BigInt *retHi, *retLo;
 
@@ -502,6 +507,14 @@ BigInt* bint_sub(BigInt* lhs, BigInt* rhs, bool* neg) {
     return lhs;
 }
 
+BigInt* bint_mul(BigInt* lhs, BigInt* rhs) {
+    return bint_mulKaratsuba(lhs, rhs);
+}
+
+BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+    return bint_divThreaded(lhs, rhs, rem, 1);
+}
+
 void* _thread_bint_mulKaratsuba(void* _args) {
     BigInt** args = (BigInt**) _args;
 
@@ -512,7 +525,9 @@ void* _thread_bint_mulKaratsuba(void* _args) {
     return (void*) bint_mulKaratsuba(lhs, rhs);
 }
 
-BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
+BigInt* bint_mulThreaded(BigInt* lhs, BigInt* rhs, uint threads) {
+    if (threads == 1) return bint_mul(lhs, rhs);
+
     uint lengthPerThread = rhs->length / 4;
 
     BigInt* sliceHi = bint_clone(rhs);
@@ -555,9 +570,9 @@ BigInt* bint_mul(BigInt* lhs, BigInt* rhs, uint threads) {
     return ret;
 }
 
-BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** _rem) {
+BigInt* bint_divThreaded(BigInt* lhs, BigInt* rhs, BigInt** _rem, uint threads) {
     BigInt *quot, *rem;
-    quot = bint_divDivAndConq(lhs, rhs, &rem);
+    quot = bint_divDivAndConq(lhs, rhs, &rem, threads);
     if (_rem) *_rem = rem;
     return quot;
 }
@@ -768,10 +783,10 @@ BigInt* bint_divClassical(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     return bint_shrink(q);
 }
 
-BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem);
-BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem);
+BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads);
+BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads);
 
-BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads) {
     const uint CUTOFF = 10;
     if (rhs->length < CUTOFF) {
         return bint_divClassical(lhs, rhs, rem);
@@ -798,13 +813,13 @@ BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     BigInt* uLo1 = lo(u, wordLength);
 
     BigInt* R1;
-    BigInt* Q1 = bint_divDivAndConq3by2(uHi3, v, &R1);
+    BigInt* Q1 = bint_divDivAndConq3by2(uHi3, v, &R1, threads);
 
     bint_leftShift(R1, 0, wordLength);
     bint_add(R1, uLo1);
 
     BigInt* R2;
-    BigInt* Q2 = bint_divDivAndConq3by2(R1, v, &R2);
+    BigInt* Q2 = bint_divDivAndConq3by2(R1, v, &R2, threads);
 
     bint_leftShift(Q1, 0, wordLength);
     bint_add(Q1, Q2);
@@ -825,7 +840,7 @@ BigInt* bint_divDivAndConq2by1(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     return bint_shrink(Q1);
 }
 
-BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads) {
     if (lhs->length < rhs->length) {
         if (rem) *rem = bint_clone(lhs);
         return bint_fromWord(0);
@@ -842,7 +857,7 @@ BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem) {
 
     BigInt *Q, *R;
     if (bint_lessThan(lhsHi1, rhsHi)) {
-        Q = bint_divDivAndConq2by1(lhsHi2, rhsHi, &R);
+        Q = bint_divDivAndConq2by1(lhsHi2, rhsHi, &R, threads);
     }
     else {
         Q = malloc(sizeof(BigInt));
@@ -858,7 +873,7 @@ BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem) {
         bint_destroy(rhsHiShifted);
     }
 
-    BigInt* D = bint_mulKaratsuba(Q, rhsLo);
+    BigInt* D = bint_mulThreaded(Q, rhsLo, threads);
 
     bint_leftShift(R, 0, wordLength);
     bint_add(R, lhsLo1);
@@ -883,7 +898,7 @@ BigInt* bint_divDivAndConq3by2(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     return bint_shrink(Q);
 }
 
-BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem) {
+BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem, uint threads) {
     BigInt* u = bint_clone(lhs);
     BigInt* v = bint_clone(rhs);
 
@@ -899,7 +914,7 @@ BigInt* bint_divDivAndConq(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     bint_leftShift(v, d, D);
 
     BigInt* R;
-    BigInt* Q = bint_divDivAndConq2by1(u, v, &R);
+    BigInt* Q = bint_divDivAndConq2by1(u, v, &R, threads);
 
     bint_destroy(u);
     bint_destroy(v);
@@ -1121,7 +1136,7 @@ int main(int argc, char** argv) {
         BigInt* partial;
         pthread_join(threadPool[i], (void**) &partial);
 
-        BigInt* prod = bint_mul(ret, partial, threads);
+        BigInt* prod = bint_mulThreaded(ret, partial, threads);
         bint_destroy(ret);
         bint_destroy(partial);
 
