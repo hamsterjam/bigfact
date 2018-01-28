@@ -288,7 +288,6 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
 
     bint_destroy(divisor);
 
-
     BigInt *retHi, *retLo;
 
     _info_bint_toDecDivAndConq* infoHi = malloc(sizeof(_info_bint_toDecDivAndConq));
@@ -515,14 +514,31 @@ BigInt* bint_div(BigInt* lhs, BigInt* rhs, BigInt** rem) {
     return bint_divThreaded(lhs, rhs, rem, 1);
 }
 
-void* _thread_bint_mulKaratsuba(void* _args) {
-    BigInt** args = (BigInt**) _args;
+typedef struct _info_bint_mulKaratsuba {
+    BigInt* lhs;
+    BigInt* rhs;
+    uint offset;
+    uint stride;
+} _info_bint_mulKaratsuba;
 
-    BigInt* lhs = args[0];
-    BigInt* rhs = args[1];
-    free(args);
+void* _thread_bint_mulKaratsuba(void* _info) {
+    _info_bint_mulKaratsuba* info = (_info_bint_mulKaratsuba*) _info;
 
-    return (void*) bint_mulKaratsuba(lhs, rhs);
+    if (info->stride + info->offset > info->rhs->length)
+        info->stride = info->rhs->length - info->offset;
+
+    BigInt* lhs = info->lhs;
+    BigInt  rhs;
+    rhs.values = info->rhs->values + info->offset;
+    rhs.length = info->stride;
+
+    uint rhslen = info->rhs->length;
+    uint offset = info->offset;
+    uint stride = info->stride;
+
+    free(info);
+
+    return (void*) bint_mulKaratsuba(lhs, &rhs);
 }
 
 BigInt* bint_mulThreaded(BigInt* lhs, BigInt* rhs, uint threads) {
@@ -530,34 +546,26 @@ BigInt* bint_mulThreaded(BigInt* lhs, BigInt* rhs, uint threads) {
 
     uint lengthPerThread = rhs->length / 4;
 
-    BigInt* sliceHi = bint_clone(rhs);
-
-    BigInt** slices = malloc(sizeof(BigInt*) * threads);
-    for (int i = 0; i < threads - 1; ++i) {
-        BigInt* oldSliceHi = sliceHi;
-        slices[i] = lo(sliceHi, lengthPerThread);
-        sliceHi   = hi(sliceHi, lengthPerThread);
-
-        bint_destroy(oldSliceHi);
-    }
-    slices[threads - 1] = sliceHi;
-
     pthread_t* threadPool = malloc(sizeof(pthread_t) * threads);
     for (int i = 0; i < threads; ++i) {
-        BigInt** args = malloc(sizeof(BigInt*) * 2);
-        args[0] = lhs;
-        args[1] = slices[i];
-        pthread_create(&threadPool[i], NULL, _thread_bint_mulKaratsuba, (void*) args);
+        _info_bint_mulKaratsuba* info = malloc(sizeof(_info_bint_mulKaratsuba));
+        info->lhs = lhs;
+        info->rhs = rhs;
+        info->offset = i * lengthPerThread;
+        info->stride = lengthPerThread;
+
+        if (i == threads - 1)
+            info->stride = rhs->length - info->offset;
+
+        pthread_create(&threadPool[i], NULL, _thread_bint_mulKaratsuba, (void*) info);
     }
 
     BigInt* ret;
     pthread_join(threadPool[0], (void**) &ret);
-    bint_destroy(slices[0]);
 
     for (int i = 1; i < threads; ++i) {
         BigInt* part;
         pthread_join(threadPool[i], (void**) &part);
-        bint_destroy(slices[i]);
 
         bint_leftShift(part, 0, lengthPerThread * i);
         bint_add(ret, part);
@@ -565,7 +573,6 @@ BigInt* bint_mulThreaded(BigInt* lhs, BigInt* rhs, uint threads) {
         bint_destroy(part);
     }
 
-    free(slices);
     free(threadPool);
     return ret;
 }
