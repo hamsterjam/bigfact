@@ -30,46 +30,175 @@ typedef struct bint_struct {
 
 typedef bint_struct* bint_t;
 
+// Any function labeled as inplace will store its result in lhs without
+// allocating any new memory.
+
+/****************
+ * Miscelaneous *
+ ****************/
+
+// Returns a bint_t representing value.
 bint_t bint_fromWord(bint_word_t value);
+
+// Returns a new bint_t with value equal to num.
 bint_t bint_clone(bint_t num);
+
+// Removes any leading zeros present in num.
 bint_t bint_shrink(bint_t num);
+
+// Frees all memory used by num.
 void bint_destroy(bint_t num);
-void bint_print(bint_t num, uint threads);
 
-bint_t bint_structoDecClassical(bint_t num);
-bint_t bint_structoDecDivAndConq(bint_t num, uint threads);
+// Prints the value of num in base 10 to stdout.
+void bint_print(bint_t num);
 
+// Prints the value of num in base 10 to stdout using threads threads.
+void bint_printThreaded(bint_t num, uint threads);
+
+// Calculates an equivalent representation of num with radix 1e19.
+bint_t bint_toDecClassical(bint_t num);
+
+// Calculates an equivalent representation of num with radix 1e19.
+bint_t bint_toDecDivAndConq(bint_t num, uint threads);
+
+/***************
+ * Comparisons *
+ ***************/
+
+// Returns (lhs < rhs)
 bool bint_lessThan(bint_t lhs, bint_t rhs);
 
-bint_t bint_addWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp);            /* inplace */
-bint_t bint_subWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* neg);  /* inplace */
-bint_t bint_mulWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp);            /* inplace */
-bint_t bint_divWord(bint_t lhs, bint_word_t rhsVal, bint_word_t* rem);             /* inplace */
-bint_word_t     bint_modWord(bint_t lhs, bint_word_t rhsVal);
+// Returns (lhs > rhs)
+bool bint_greaterThan(bint_t lhs, bint_t rhs);
 
-bint_t bint_add(bint_t lhs, bint_t rhs);           /* inplace */
-bint_t bint_sub(bint_t lhs, bint_t rhs, int* neg); /* inplace */
-bint_t bint_mul(bint_t lhs, bint_t rhs);
-bint_t bint_div(bint_t lhs, bint_t rhs, bint_t* rem);
+// Returns (lhs == rhs)
+bool bint_equals(bint_t lhs, bint_t rhs);
 
-bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads);
-bint_t bint_divThreaded(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+/********************************************
+ * Arithmetic on a bint_t and a bint_word_t *
+ ********************************************/
 
-bint_t bint_addNoLastCarry(bint_t lhs, bint_t rhs, bool* carry); /* inplace */
-bint_t bint_subNoLastCarry(bint_t lhs, bint_t rhs, bool* carry); /* inplace */
+// Returns lhs + rhsVal * 2^(WORD_LENGTH * rhsExp).
+bint_t bint_addWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp); /* inplace */
 
-bint_t bint_mulClassical(bint_t lhs, bint_t rhs);
-bint_t bint_mulKaratsuba(bint_t lhs, bint_t rhs);
-bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem);
-bint_t bint_divDivAndConq(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+// Returns  lhs - rhsVal * 2^(WORD_LENGTH * rhsExp).
+// If neg is not NULL, the value it points to will be set to 0 if the result is
+// positive and set to 1 if the result is negative.
+bint_t bint_subWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* neg); /* inplace */
 
-bint_t bint_leftShift( bint_t lhs, uint bits, bint_exp_t words); /* inplace */
+// Returns lhs * rhsVal * 2^(WORD_LENGTH * rhsExp).
+bint_t bint_mulWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp); /* inplace */
+
+// Returns floor(lhs / rhsVal).
+// If rem is not NULL, the value it points to will be set to the remainder
+bint_t bint_divWord(bint_t lhs, bint_word_t rhsVal, bint_word_t* rem); /* inplace */
+
+// Returns the remainder of lhs / rhsVal.
+bint_word_t bint_modWord(bint_t lhs, bint_word_t rhsVal);
+
+// Returns lhs shifted left by (bits + WORD_LENGTH * words) bits.
+bint_t bint_leftShift(bint_t lhs, uint bits, bint_exp_t words); /* inplace */
+
+// Returns rhs shifted right by (bits + WORD_LENGTH * words) bits.
 bint_t bint_rightShift(bint_t lhs, uint bits, bint_exp_t words); /* inplace */
 
-bint_t bint_radMulWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
+/*************************************
+ * Arithmetic on two bint_t operands *
+ *************************************/
+
+// Returns lhs + rhs.
+bint_t bint_add(bint_t lhs, bint_t rhs); /* inplace */
+
+// Returns lhs - rhs.
+// If neg is not NULL, the value it points to will be set to 0 if the result is
+// positive and set to 1 if the result is negative.
+bint_t bint_sub(bint_t lhs, bint_t rhs, int* neg); /* inplace */
+
+// Returns lhs * rhs.
+bint_t bint_mul(bint_t lhs, bint_t rhs);
+
+// Returns floor(lhs / rhs).
+// If rem is not NULL, the value it points to will be set to the remainder.
+bint_t bint_div(bint_t lhs, bint_t rhs, bint_t* rem);
+
+/*****************************
+ * Multi-Threaded Arithmetic *
+ *****************************/
+
+// Returns lhs * rhs using threads threads.
+bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads);
+
+// Returns floor(lhs / rhs) using threads threads.
+// If rem is not NULL, the value it points to will be set to the remainder
+bint_t bint_divThreaded(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+
+/***********************
+ * Specific Algorithms *
+ ***********************/
+
+// Returns the value of lhs + rhs without performing the final carry.
+// If carry is not NULL, the value it points to will be set to 1 if a carry is
+// required (but wasn't performed) and 0 otherwise.
+bint_t bint_addNoLastCarry(bint_t lhs, bint_t rhs, bool* carry); /* inplace */
+
+// Returns the value of lhs - rhs without performing the final borrow.
+// If carry is not NULL, the value it points to will be set to 1 if a borrow is
+// required (but wasn't performed) and 0 otherwise.
+bint_t bint_subNoLastCarry(bint_t lhs, bint_t rhs, bool* carry); /* inplace */
+
+// Returns lhs * rhs using a the classic long multiplication algorithm.
+// Technically this is multiplication by parts, but it is equivalent.
+//
+// Runs in O(n^2) time.
+// (with n = max(lhs->length, rhs->length))
+bint_t bint_mulClassical(bint_t lhs, bint_t rhs);
+
+// Returns lhs * rhs using the Karatsuba algorithm
+//
+// Runs in O(n^(log_2(3))) time, that's roughly O(n^1.585).
+// (with n = max(lhs->length, rhs->length))
+bint_t bint_mulKaratsuba(bint_t lhs, bint_t rhs);
+
+// Returns floor(lhs / rhs) using classic long division.
+// If rem is not NULL, the value it points to will be set to the remainder.
+// This implementation is based on:
+//      Donald Knuth
+//      The Art of Computer Programming, Vol II,
+//      pg 272, Algorithm D
+//
+// Runs in O((m-n)*n) time.
+// (with m = lhs->length, n = rhs->length)
+bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem);
+
+// Returns floor(lhs / rhs) using recursive division.
+// If rem is not NULL, the value it points to will be set to the remainder.
+// This implementation is based on:
+//      Christoph Burnikel, and Joachim Ziegler
+//      Fast Recursive Division (1998)
+//
+// Runs in O(n log(n)) time.
+// (with n = rhs->length);
+bint_t bint_divDivAndConq(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+
+/******************************
+ * Abritrary Radix Arithmetic *
+ ******************************/
+
+// Returns lhs + rhsVal * rad^rhsExp.
+// This function enforces (and expects) a radix of rad.
 bint_t bint_radAddWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
 
+// Returns lhs * rhsVal * rad^rhsExp.
+// This function enforces (and expects) a radix of rad.
+bint_t bint_radMulWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
+
+// Returns lhs + rhs.
+// This function enforces (and expects) a radix of rad.
 bint_t bint_radAdd(bint_t lhs, bint_t rhs, bint_word_t rad); /* inplace */
+
+//=================
+// Implementations
+//=================
 
 bint_t hi(bint_t num, bint_exp_t cut) {
     if (cut >= num->length) {
@@ -97,6 +226,8 @@ bint_t lo(bint_t num, bint_exp_t cut) {
     return ret;
 }
 
+// The x86 MUL instruction returns a 2 word product. Only the low part is
+// available (easily) in C. This function returns both words
 bint_word_t bigMul(bint_word_t lhs, bint_word_t rhs, bint_word_t* _over) {
     bint_word_t ret, over;
     asm ("mov %2, %%rax;"
@@ -112,6 +243,9 @@ bint_word_t bigMul(bint_word_t lhs, bint_word_t rhs, bint_word_t* _over) {
     return ret;
 }
 
+// The x86 DIV instruction can accept a 2 word dividend. Thisfeature isn't used
+// by C, probably because if the quotient overflows (which is possible) it will
+// trigger a #DE (Divide Error) exception so you have to be pretty careful
 bint_word_t bigDiv(bint_word_t lhsHi, bint_word_t lhsLo, bint_word_t rhs, bint_word_t* _rem, int* overflow) {
     if (rhs == 0) {
         return lhsLo/rhs;
@@ -211,8 +345,12 @@ void bint_destroy(bint_t num) {
     free(num);
 }
 
-void bint_print(bint_t num, uint threads) {
-    bint_t dec = bint_structoDecDivAndConq(num, threads);
+void bint_print(bint_t num) {
+    bint_printThreaded(num, 1);
+}
+
+void bint_printThreaded(bint_t num, uint threads) {
+    bint_t dec = bint_toDecDivAndConq(num, threads);
 
     printf("%llu", dec->values[dec->length - 1]);;
     for (bint_exp_t i = dec->length - 1; i != 0;) {
@@ -225,7 +363,7 @@ void bint_print(bint_t num, uint threads) {
 }
 
 
-bint_t bint_structoDecClassical(bint_t num) {
+bint_t bint_toDecClassical(bint_t num) {
     const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
 
     bint_t ret = malloc(sizeof(bint_struct));
@@ -243,16 +381,16 @@ bint_t bint_structoDecClassical(bint_t num) {
     return bint_shrink(ret);
 }
 
-typedef struct _info_bint_structoDecDivAndConq {
+typedef struct _info_bint_toDecDivAndConq {
     bint_t          num;
     pthread_mutex_t* poolLock;
     pthread_t*       threadPool;
     uint*            currThreads;
     uint             maxThreads;
-} _info_bint_structoDecDivAndConq;
+} _info_bint_toDecDivAndConq;
 
-void* _thread_bint_structoDecDivAndConq(void* _info) {
-    _info_bint_structoDecDivAndConq* info = (_info_bint_structoDecDivAndConq*) _info;
+void* _thread_bint_toDecDivAndConq(void* _info) {
+    _info_bint_toDecDivAndConq* info = (_info_bint_toDecDivAndConq*) _info;
 
     bint_t          num         = info->num;
     pthread_mutex_t* poolLock    = info->poolLock;
@@ -264,7 +402,7 @@ void* _thread_bint_structoDecDivAndConq(void* _info) {
     const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
     const int CUTOFF = 10;
     if (num->length < CUTOFF) {
-        return (void*) bint_structoDecClassical(num);
+        return (void*) bint_toDecClassical(num);
     }
 
     bint_t ret = malloc(sizeof(bint_struct));
@@ -272,6 +410,7 @@ void* _thread_bint_structoDecDivAndConq(void* _info) {
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
     memset(ret->values, 0, sizeof(bint_word_t) * ret->length);
 
+    // This divisor is a power of 10^19 that is roughly the square root of num
     uint wordLength = ret->length / 2;
     bint_t divisor = bint_fromWord(1e19);
     for (uint i = 1; i < wordLength; ++i) {
@@ -294,23 +433,23 @@ void* _thread_bint_structoDecDivAndConq(void* _info) {
 
     bint_t retHi, retLo;
 
-    _info_bint_structoDecDivAndConq* infoHi = malloc(sizeof(_info_bint_structoDecDivAndConq));
+    _info_bint_toDecDivAndConq* infoHi = malloc(sizeof(_info_bint_toDecDivAndConq));
     infoHi->num         = numHi;
     infoHi->poolLock    = poolLock;
     infoHi->currThreads = currThreads;
     infoHi->maxThreads  = maxThreads;
 
     pthread_t split;
-    if (splitThread) pthread_create(&split, NULL, _thread_bint_structoDecDivAndConq, (void*) infoHi);
-    else retHi = _thread_bint_structoDecDivAndConq((void*) infoHi);
+    if (splitThread) pthread_create(&split, NULL, _thread_bint_toDecDivAndConq, (void*) infoHi);
+    else retHi = _thread_bint_toDecDivAndConq((void*) infoHi);
 
-    _info_bint_structoDecDivAndConq* infoLo = malloc(sizeof(_info_bint_structoDecDivAndConq));
+    _info_bint_toDecDivAndConq* infoLo = malloc(sizeof(_info_bint_toDecDivAndConq));
     infoLo->num         = numLo;
     infoLo->poolLock    = poolLock;
     infoLo->currThreads = currThreads;
     infoLo->maxThreads  = maxThreads;
 
-    retLo = _thread_bint_structoDecDivAndConq((void*) infoLo);
+    retLo = _thread_bint_toDecDivAndConq((void*) infoLo);
 
     if (splitThread) {
         pthread_join(split, (void**) &retHi);
@@ -330,19 +469,19 @@ void* _thread_bint_structoDecDivAndConq(void* _info) {
     return (void*) bint_shrink(ret);
 }
 
-bint_t bint_structoDecDivAndConq(bint_t num, uint threads) {
+bint_t bint_toDecDivAndConq(bint_t num, uint threads) {
     pthread_mutex_t poolLock;
     pthread_mutex_init(&poolLock, NULL);
 
     uint currThreads = 1;
 
-    _info_bint_structoDecDivAndConq* info = malloc(sizeof(_info_bint_structoDecDivAndConq));
+    _info_bint_toDecDivAndConq* info = malloc(sizeof(_info_bint_toDecDivAndConq));
     info->num         = num;
     info->poolLock    = &poolLock;
     info->currThreads = &currThreads;
     info->maxThreads  = threads;
 
-    bint_t ret = _thread_bint_structoDecDivAndConq((void*) info);
+    bint_t ret = _thread_bint_toDecDivAndConq((void*) info);
 
     pthread_mutex_destroy(&poolLock);
 
@@ -360,6 +499,14 @@ bool bint_lessThan(bint_t lhs, bint_t rhs) {
         if (lhs->values[i] > rhs->values[i]) return false;
     }
     return false;
+}
+
+bool bint_greaterThan(bint_t lhs, bint_t rhs) {
+    return bint_lessThan(rhs, lhs);
+}
+
+bool bint_equals(bint_t lhs, bint_t rhs) {
+    return !bint_lessThan(lhs, rhs) && !bint_lessThan(rhs, lhs);
 }
 
 bint_t bint_addWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
@@ -429,6 +576,9 @@ bint_t bint_subWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* _neg
 }
 
 bint_t bint_mulWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
+    // It is *substantially* faster to keep track of all the high parts of the
+    // multiplications inside this carry variable and add them all at once
+    // rather than adding them as they come up
     bint_struct carry;
     carry.length = lhs->length + 1;
     carry.values = malloc(sizeof(bint_word_t) * carry.length);
@@ -463,6 +613,8 @@ bint_t bint_divWord(bint_t lhs, bint_word_t rhsVal, bint_word_t* _rem) {
     return bint_shrink(lhs);
 }
 
+// This function is very, very slightly faster than divWord so I'm going to
+// leave it here
 bint_word_t bint_modWord(bint_t lhs, bint_word_t rhsVal) {
     bint_word_t radMod;
     bigDiv(1, 0, rhsVal, &radMod, NULL);
@@ -482,6 +634,69 @@ bint_word_t bint_modWord(bint_t lhs, bint_word_t rhsVal) {
     return ret;
 }
 
+bint_t bint_leftShift(bint_t lhs, uint bits, bint_exp_t words) {
+    lhs->length += words;
+    lhs->length += 1;
+    lhs->values = realloc(lhs->values, sizeof(bint_word_t) * lhs->length);
+
+    uint lBits = bits;
+    uint rBits = WORD_LENGTH - bits;
+
+    bint_word_t mask = (1L << lBits) - 1;
+
+    lhs->values[lhs->length - 1] = 0;
+    for (bint_exp_t i = lhs->length - 1; i != words;) {
+        --i;
+        bint_word_t carry;
+        carry  = lhs->values[i - words] >> rBits;
+        carry &= mask;
+
+        bint_word_t val;
+        val  =  lhs->values[i - words] << lBits;
+        val &= ~mask;
+
+        lhs->values[i]      = val;
+        lhs->values[i + 1] |= carry;
+    }
+
+    memset(lhs->values, 0, sizeof(bint_word_t) * words);
+
+    if (lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
+
+    return lhs;
+}
+
+bint_t bint_rightShift(bint_t lhs, uint bits, bint_exp_t words) {
+    if (words >= lhs->length) {
+        lhs->length = 1;
+        lhs->values[0] = 0;
+        return lhs;
+    }
+
+    lhs->length -= words;
+
+    uint lBits = WORD_LENGTH - bits;
+    uint rBits = bits;
+
+    bint_word_t mask = (1L << lBits) - 1;
+    if (bits == 0) mask = ~mask;
+
+    for (bint_exp_t i = 0; i < lhs->length; ++i) {
+        bint_word_t carry;
+        carry  =  lhs->values[i + words] << lBits;
+        carry &= ~mask;
+
+        bint_word_t val;
+        val  = lhs->values[i + words] >> rBits;
+        val &= mask;
+
+        lhs->values[i] = val;
+        if (i != 0) lhs->values[i-1] |= carry;
+    }
+
+    return lhs;
+}
+
 bint_t bint_add(bint_t lhs, bint_t rhs) {
     bool carry;
     bint_addNoLastCarry(lhs, rhs, &carry);
@@ -499,6 +714,8 @@ bint_t bint_sub(bint_t lhs, bint_t rhs, bool* neg) {
     bool carry;
     bint_subNoLastCarry(lhs, rhs, &carry);
 
+    // If we have a carry (rightly a borrow) we alread have the answer is in
+    // twos-complement, flip all the bits and add 1 to change it back
     if (carry) {
         for (bint_exp_t i = 0; i < lhs->length; ++i) {
             lhs->values[i] = ~(lhs->values[i]);
@@ -525,6 +742,7 @@ typedef struct _info_bint_mulKaratsuba {
     bint_exp_t stride;
 } _info_bint_mulKaratsuba;
 
+// This essentially just calls bint_mulKaratsuba in a pthread compliant manner
 void* _thread_bint_mulKaratsuba(void* _info) {
     _info_bint_mulKaratsuba* info = (_info_bint_mulKaratsuba*) _info;
 
@@ -546,10 +764,12 @@ void* _thread_bint_mulKaratsuba(void* _info) {
 }
 
 bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads) {
-    if (threads == 1) return bint_mul(lhs, rhs);
+    if (threads == 1) return bint_mulKaratsuba(lhs, rhs);
 
     uint lengthPerThread = rhs->length / 4;
 
+    // We split rhs into as many limbs as there are threads and multiply the rhs
+    // by each limb in an individual thread.
     pthread_t* threadPool = malloc(sizeof(pthread_t) * threads);
     for (int i = 0; i < threads; ++i) {
         _info_bint_mulKaratsuba* info = malloc(sizeof(_info_bint_mulKaratsuba));
@@ -564,6 +784,8 @@ bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads) {
         pthread_create(&threadPool[i], NULL, _thread_bint_mulKaratsuba, (void*) info);
     }
 
+    // When reading back the results, we just need to shift the naswers to
+    // correspond to where the limb was taken from rhs
     bint_t ret;
     pthread_join(threadPool[0], (void**) &ret);
 
@@ -581,6 +803,7 @@ bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads) {
     return ret;
 }
 
+// The only multi-threading going on here is actually just calls to bint_mulThreaded
 bint_t bint_divThreaded(bint_t lhs, bint_t rhs, bint_t* _rem, uint threads) {
     bint_t quot, rem;
     quot = bint_divDivAndConq(lhs, rhs, &rem, threads);
@@ -599,6 +822,12 @@ bint_t bint_addNoLastCarry(bint_t lhs, bint_t rhs, bool* _carry) {
         lhs->length = rhs->length;
     }
 
+    // This asm snippet sets the carry flag to 0 then starting from the least
+    // significant bit calculates:
+    //      lhs[i] = lhs[i] + rhs[i] + carry.
+    // If the calculation carries (overflows) it sets the carry flag to 1
+    //
+    // Upon completion it outputs the carry flag to the variable carry
     bint_word_t carry;
     bint_word_t loops = lhs->length;
     asm ("mov $0, %%rax;"
@@ -621,12 +850,20 @@ bint_t bint_addNoLastCarry(bint_t lhs, bint_t rhs, bool* _carry) {
     return bint_shrink(lhs);
 }
 
+// The name of this is a slight misnomer, it should properly be called
+// bint_subNolastBorrow but I wanted it to be consistent with the add above
 bint_t bint_subNoLastCarry(bint_t lhs, bint_t rhs, bool* _carry) {
     if (lhs->length > rhs->length) {
         rhs->values = realloc(rhs->values, sizeof(bint_word_t) * lhs->length);
         memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(bint_word_t));
     }
 
+    // this asm snippet sets the carry flag to 0 then starting from the least
+    // significant word calculates:
+    //      lhs[i] = lhs[i] - (rhs[i] + carry).
+    // If this calculation borrows (underflows) it sets the carry flag to 1
+    //
+    // Upon completion it outputs the carry flag to the variable carry
     bint_word_t carry;
     bint_word_t loops = lhs->length;
     asm ("mov $0, %%rax;"
@@ -682,6 +919,12 @@ bint_t bint_mulKaratsuba(bint_t lhs, bint_t rhs) {
     bint_t rhsHi = hi(rhs, halfLength);
 
     bint_t p0, p1, p2;
+    // p0 = lhsLo * rhsLo
+
+    // p1 = lhsLo * rhsHi + lhsHi * rhsLo
+    //    = (lhsHi + lhsLo) * (rhsHi + rhsLo) - p0 - p2
+
+    // p2 = lhsHi * rhsHi
 
     p0 = bint_mulKaratsuba(lhsLo, rhsLo);
     p2 = bint_mulKaratsuba(lhsHi, rhsHi);
@@ -690,6 +933,8 @@ bint_t bint_mulKaratsuba(bint_t lhs, bint_t rhs) {
     bint_leftShift(ret, 0, 2*halfLength);
     bint_add(ret, p0);
 
+    // Modifying values so I don't have to allocate more space
+    // These variables are really misnamed from here on
     bint_add(lhsHi, lhsLo);
     bint_add(rhsHi, rhsLo);
 
@@ -729,6 +974,9 @@ bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem) {
     q->values = malloc(sizeof(bint_word_t) * q->length);
 
     // Normalize (D1)
+
+    // Different normalization factor that uses shifts instead of
+    // multiplication for speed, the factor here is actually 2^d
     uint d = 0;
     for (bint_word_t top = v->values[n-1]; top < (1L << 63); top <<= 1) ++d;
 
@@ -748,6 +996,10 @@ bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem) {
     for (bint_exp_t j = m + 1; j != 0;) {
         --j;
         // Calculate q_hat (D3)
+
+        // A do a very different estimate for q_hat than what Knuth uses.
+        // I divide the top 3 words of the dividend by the top 2 words of the
+        // divisor which will produce a quotient that is at most 1 too big
         bint_struct vHi;
         vHi.length = 2;
         vHi.values = v->values + n-2;
@@ -794,9 +1046,16 @@ bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem) {
     return bint_shrink(q);
 }
 
+// These functions are based on:
+//      Christoph Burnikel, and Joachim Ziegler
+//      Fast Recursive Division (1998)
+//
+// I will refer to the notation in the paper in comments
+
 bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
 bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
 
+// Algorithm 1/ (D_{2n/1n})
 bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     const bint_exp_t CUTOFF = 10;
     if (rhs->length < CUTOFF) {
@@ -814,24 +1073,30 @@ bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads)
     bint_t v = bint_clone(rhs);
 
     // Renormalize
+    // This step isnt included in Burnikel and Ziegler, this allows me to
+    // further subdivide odd word sizes by renormalizing it up one
     bint_exp_t D = 0;
     if (wordLength * 2 > v->length) D = 1;
 
     bint_leftShift(u, 0, D);
     bint_leftShift(v, 0, D);
 
-    bint_t uHi3 = hi(u, wordLength);
-    bint_t uLo1 = lo(u, wordLength);
+    bint_t uHi3 = hi(u, wordLength); // [A1, A2, A3]
+    bint_t uLo1 = lo(u, wordLength); // A4
 
+    // Calculate [A1, A2, A3] / [B1, B2]
     bint_t R1;
     bint_t Q1 = bint_divDivAndConq3by2(uHi3, v, &R1, threads);
 
+    // R1 = [R11, R12, A4]
     bint_leftShift(R1, 0, wordLength);
     bint_add(R1, uLo1);
 
+    // Calculate [R11, R12, A4] / [B1, B2]
     bint_t R2;
     bint_t Q2 = bint_divDivAndConq3by2(R1, v, &R2, threads);
 
+    // Q1 = [Q1, Q2]
     bint_leftShift(Q1, 0, wordLength);
     bint_add(Q1, Q2);
 
@@ -851,6 +1116,7 @@ bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads)
     return bint_shrink(Q1);
 }
 
+// Algorithm 2. (D_{3n/2n})
 bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     if (lhs->length < rhs->length) {
         if (rem) *rem = bint_clone(lhs);
@@ -859,23 +1125,26 @@ bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads)
 
     bint_exp_t wordLength = (rhs->length + 1) / 2;
 
-    bint_t lhsHi1 = hi(lhs, wordLength*2);
-    bint_t lhsHi2 = hi(lhs, wordLength);
-    bint_t rhsHi  = hi(rhs, wordLength);
+    bint_t lhsHi1 = hi(lhs, wordLength*2); // A1
+    bint_t lhsHi2 = hi(lhs, wordLength);   // [A1, A2]
+    bint_t rhsHi  = hi(rhs, wordLength);   // B1
 
-    bint_t lhsLo1 = lo(lhs, wordLength);
-    bint_t rhsLo  = lo(rhs, wordLength);
+    bint_t lhsLo1 = lo(lhs, wordLength);   // A3
+    bint_t rhsLo  = lo(rhs, wordLength);   // B2
 
     bint_t Q, R;
     if (bint_lessThan(lhsHi1, rhsHi)) {
+        // Calculate [A1, A2] / B1
         Q = bint_divDivAndConq2by1(lhsHi2, rhsHi, &R, threads);
     }
     else {
+        // Set Q to the \beta^n - 1
         Q = malloc(sizeof(bint_struct));
         Q->length = wordLength;
         Q->values = malloc(sizeof(bint_word_t) * wordLength);
         memset(Q->values, 0xff, sizeof(bint_word_t) * wordLength);
 
+        // R = [A1, A2] - [B1, 0] + B1
         R = bint_clone(lhsHi2);
         bint_t rhsHiShifted = bint_leftShift(bint_clone(rhsHi), 0, wordLength);
         bint_sub(R, rhsHiShifted, NULL);
@@ -884,17 +1153,26 @@ bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads)
         bint_destroy(rhsHiShifted);
     }
 
+    // D = Q * B2
     bint_t D = bint_mulThreaded(Q, rhsLo, threads);
 
+    // R = R * \beta^n + A3 - D
     bint_leftShift(R, 0, wordLength);
     bint_add(R, lhsLo1);
     bool neg;
+    // Don't carry during the subtraction, leave it in twos-complement.
+    // This will be rectified by ignoring the carry in the addition later.
     bint_subNoLastCarry(R, D, &neg);
 
+    // This loop should run at most twice
     while (neg) {
+        // Q = Q - 1
+        // R = R + B
         bint_subWord(Q, 1, 0, NULL);
         bint_addNoLastCarry(R, rhs, &neg);
         neg = !neg;
+        // As mentioned before, dont carry as it will cancel with the borrow we
+        // didn't do with the subtraction.
     }
 
     bint_destroy(lhsHi1);
@@ -915,6 +1193,8 @@ bint_t bint_divDivAndConq(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
 
     bint_exp_t wordLength = (rhs->length > (lhs->length + 1) / 2) ? rhs->length : (lhs->length + 1) / 2;
 
+    // All we are doing here is normalizing so that we have a 2 word dividend
+    // and a normalized 1 word divisior (normalized as in its top bit is set)
     bint_exp_t D = 0;
     if (wordLength > rhs->length) D = wordLength - rhs->length;
 
@@ -938,92 +1218,6 @@ bint_t bint_divDivAndConq(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     return Q;
 }
 
-bint_t bint_rightShift(bint_t lhs, uint bits, bint_exp_t words) {
-    if (words >= lhs->length) {
-        lhs->length = 1;
-        lhs->values[0] = 0;
-        return lhs;
-    }
-
-    lhs->length -= words;
-
-    uint lBits = WORD_LENGTH - bits;
-    uint rBits = bits;
-
-    bint_word_t mask = (1L << lBits) - 1;
-    if (bits == 0) mask = ~mask;
-
-    for (bint_exp_t i = 0; i < lhs->length; ++i) {
-        bint_word_t carry;
-        carry  =  lhs->values[i + words] << lBits;
-        carry &= ~mask;
-
-        bint_word_t val;
-        val  = lhs->values[i + words] >> rBits;
-        val &= mask;
-
-        lhs->values[i] = val;
-        if (i != 0) lhs->values[i-1] |= carry;
-    }
-
-    return lhs;
-}
-
-bint_t bint_leftShift(bint_t lhs, uint bits, bint_exp_t words) {
-    lhs->length += words;
-    lhs->length += 1;
-    lhs->values = realloc(lhs->values, sizeof(bint_word_t) * lhs->length);
-
-    uint lBits = bits;
-    uint rBits = WORD_LENGTH - bits;
-
-    bint_word_t mask = (1L << lBits) - 1;
-
-    lhs->values[lhs->length - 1] = 0;
-    for (bint_exp_t i = lhs->length - 1; i != words;) {
-        --i;
-        bint_word_t carry;
-        carry  = lhs->values[i - words] >> rBits;
-        carry &= mask;
-
-        bint_word_t val;
-        val  =  lhs->values[i - words] << lBits;
-        val &= ~mask;
-
-        lhs->values[i]      = val;
-        lhs->values[i + 1] |= carry;
-    }
-
-    memset(lhs->values, 0, sizeof(bint_word_t) * words);
-
-    if (lhs->values[lhs->length - 1] == 0) lhs->length -= 1;
-
-    return lhs;
-}
-
-bint_t bint_radMulWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
-    bint_struct carry;
-    carry.length = lhs->length + 1;
-    carry.values = malloc(sizeof(bint_word_t) * carry.length);
-    carry.values[0] = 0;
-
-    for (bint_exp_t i = 0; i < lhs->length; ++i) {
-        bint_word_t prod, over;
-        prod = bigMul(lhs->values[i], rhsVal, &over);
-        over = bigDiv(over, prod, rad, &prod, NULL);
-
-        lhs->values[i]      = prod;
-        carry.values[i + 1] = over;
-    }
-
-    bint_radAdd(lhs, &carry, rad);
-    bint_shrink(lhs);
-    bint_leftShift(lhs, 0, rhsExp);
-
-    free(carry.values);
-    return lhs;
-}
-
 bint_t bint_radAddWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
     if (lhs->length < rhsExp + 1) {
         lhs->values = realloc(lhs->values, sizeof(bint_word_t) * (rhsExp + 1));
@@ -1034,6 +1228,7 @@ bint_t bint_radAddWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_
         return lhs;
     }
 
+    // Note that doing a simple 1 word modulus is insufficent
     bint_word_t sum   = lhs->values[rhsExp] + rhsVal;
     bool over = sum < rhsVal;
     bigDiv(over, sum, rad, &sum, NULL);
@@ -1063,6 +1258,29 @@ bint_t bint_radAddWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_
     return bint_shrink(lhs);
 }
 
+bint_t bint_radMulWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
+    bint_struct carry;
+    carry.length = lhs->length + 1;
+    carry.values = malloc(sizeof(bint_word_t) * carry.length);
+    carry.values[0] = 0;
+
+    for (bint_exp_t i = 0; i < lhs->length; ++i) {
+        bint_word_t prod, over;
+        prod = bigMul(lhs->values[i], rhsVal, &over);
+        over = bigDiv(over, prod, rad, &prod, NULL);
+
+        lhs->values[i]      = prod;
+        carry.values[i + 1] = over;
+    }
+
+    bint_radAdd(lhs, &carry, rad);
+    bint_shrink(lhs);
+    bint_leftShift(lhs, 0, rhsExp);
+
+    free(carry.values);
+    return lhs;
+}
+
 bint_t bint_radAdd(bint_t lhs, bint_t rhs, bint_word_t rad) {
     bint_word_t sumLength = (lhs->length > rhs->length) ? lhs->length : rhs->length;
 
@@ -1086,6 +1304,7 @@ bint_t bint_radAdd(bint_t lhs, bint_t rhs, bint_word_t rad) {
 
         carry = overflow || sum >= rad;
 
+        // Note that doing a simple 1 word modulus is insufficent
         bigDiv(overflow, sum, rad, &sum, NULL);
         lhs->values[i] = sum;
     }
@@ -1154,7 +1373,7 @@ int main(int argc, char** argv) {
         ret = prod;
     }
 
-    bint_print(ret, threads);
+    bint_printThreaded(ret, threads);
 
     bint_destroy(ret);
     free(threadPool);
