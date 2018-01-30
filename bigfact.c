@@ -23,58 +23,60 @@ const bint_word_t HALF_SIZE   = 1L << 32;
 const bint_exp_t  DECIMAL_LENGTH = 19;
 const bint_word_t DECIMAL_SIZE   = 1e19;
 
-typedef struct bint_t {
+typedef struct bint_struct {
     bint_word_t* values;
     bint_exp_t   length;
-} bint_t;
+} bint_struct;
 
-bint_t* bint_fromWord(bint_word_t value);
-bint_t* bint_clone(bint_t* num);
-bint_t* bint_shrink(bint_t* num);
-void bint_destroy(bint_t* num);
-void bint_print(bint_t* num, uint threads);
+typedef bint_struct* bint_t;
 
-bint_t* bint_toDecClassical(bint_t* num);
-bint_t* bint_toDecDivAndConq(bint_t* num, uint threads);
+bint_t bint_fromWord(bint_word_t value);
+bint_t bint_clone(bint_t num);
+bint_t bint_shrink(bint_t num);
+void bint_destroy(bint_t num);
+void bint_print(bint_t num, uint threads);
 
-bool bint_lessThan(bint_t* lhs, bint_t* rhs);
+bint_t bint_structoDecClassical(bint_t num);
+bint_t bint_structoDecDivAndConq(bint_t num, uint threads);
 
-bint_t* bint_addWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp);            /* inplace */
-bint_t* bint_subWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* neg);  /* inplace */
-bint_t* bint_mulWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp);            /* inplace */
-bint_t* bint_divWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t* rem);             /* inplace */
-bint_word_t     bint_modWord(bint_t* lhs, bint_word_t rhsVal);
+bool bint_lessThan(bint_t lhs, bint_t rhs);
 
-bint_t* bint_add(bint_t* lhs, bint_t* rhs);           /* inplace */
-bint_t* bint_sub(bint_t* lhs, bint_t* rhs, int* neg); /* inplace */
-bint_t* bint_mul(bint_t* lhs, bint_t* rhs);
-bint_t* bint_div(bint_t* lhs, bint_t* rhs, bint_t** rem);
+bint_t bint_addWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp);            /* inplace */
+bint_t bint_subWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* neg);  /* inplace */
+bint_t bint_mulWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp);            /* inplace */
+bint_t bint_divWord(bint_t lhs, bint_word_t rhsVal, bint_word_t* rem);             /* inplace */
+bint_word_t     bint_modWord(bint_t lhs, bint_word_t rhsVal);
 
-bint_t* bint_mulThreaded(bint_t* lhs, bint_t* rhs, uint threads);
-bint_t* bint_divThreaded(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads);
+bint_t bint_add(bint_t lhs, bint_t rhs);           /* inplace */
+bint_t bint_sub(bint_t lhs, bint_t rhs, int* neg); /* inplace */
+bint_t bint_mul(bint_t lhs, bint_t rhs);
+bint_t bint_div(bint_t lhs, bint_t rhs, bint_t* rem);
 
-bint_t* bint_addNoLastCarry(bint_t* lhs, bint_t* rhs, bool* carry); /* inplace */
-bint_t* bint_subNoLastCarry(bint_t* lhs, bint_t* rhs, bool* carry); /* inplace */
+bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads);
+bint_t bint_divThreaded(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
 
-bint_t* bint_mulClassical(bint_t* lhs, bint_t* rhs);
-bint_t* bint_mulKaratsuba(bint_t* lhs, bint_t* rhs);
-bint_t* bint_divClassical(bint_t* lhs, bint_t* rhs, bint_t** rem);
-bint_t* bint_divDivAndConq(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads);
+bint_t bint_addNoLastCarry(bint_t lhs, bint_t rhs, bool* carry); /* inplace */
+bint_t bint_subNoLastCarry(bint_t lhs, bint_t rhs, bool* carry); /* inplace */
 
-bint_t* bint_leftShift( bint_t* lhs, uint bits, bint_exp_t words); /* inplace */
-bint_t* bint_rightShift(bint_t* lhs, uint bits, bint_exp_t words); /* inplace */
+bint_t bint_mulClassical(bint_t lhs, bint_t rhs);
+bint_t bint_mulKaratsuba(bint_t lhs, bint_t rhs);
+bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem);
+bint_t bint_divDivAndConq(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
 
-bint_t* bint_radMulWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
-bint_t* bint_radAddWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
+bint_t bint_leftShift( bint_t lhs, uint bits, bint_exp_t words); /* inplace */
+bint_t bint_rightShift(bint_t lhs, uint bits, bint_exp_t words); /* inplace */
 
-bint_t* bint_radAdd(bint_t* lhs, bint_t* rhs, bint_word_t rad); /* inplace */
+bint_t bint_radMulWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
+bint_t bint_radAddWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad); /* inplace */
 
-bint_t* hi(bint_t* num, bint_exp_t cut) {
+bint_t bint_radAdd(bint_t lhs, bint_t rhs, bint_word_t rad); /* inplace */
+
+bint_t hi(bint_t num, bint_exp_t cut) {
     if (cut >= num->length) {
         return bint_fromWord(0);
     }
 
-    bint_t* ret = malloc(sizeof(bint_t));
+    bint_t ret = malloc(sizeof(bint_struct));
     bint_exp_t testSize = num->length - cut;
     ret->length = (num->length < testSize) ? num->length : testSize;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
@@ -83,11 +85,11 @@ bint_t* hi(bint_t* num, bint_exp_t cut) {
     return ret;
 }
 
-bint_t* lo(bint_t* num, bint_exp_t cut) {
+bint_t lo(bint_t num, bint_exp_t cut) {
     if (cut >= num->length) {
         return bint_clone(num);
     }
-    bint_t* ret = malloc(sizeof(bint_t));
+    bint_t ret = malloc(sizeof(bint_struct));
     ret->length = (num->length < cut) ? num->length : cut;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
     memcpy(ret->values, num->values, sizeof(bint_word_t) * ret->length);
@@ -143,12 +145,12 @@ bint_word_t bigDiv(bint_word_t lhsHi, bint_word_t lhsLo, bint_word_t rhs, bint_w
     return ret;
 }
 
-bint_word_t div3by2(bint_t* u, bint_t* v, bint_t** _rem) {
+bint_word_t div3by2(bint_t u, bint_t v, bint_t* _rem) {
     bint_word_t rem;
     bool over;
     bint_word_t q = bigDiv(u->values[2], u->values[1], v->values[1], &rem, &over);
 
-    bint_t* R;
+    bint_t R;
     if (over) {
         q = WORD_MAX;
         R = bint_leftShift(bint_fromWord(u->values[2]), 0, 1);
@@ -161,7 +163,7 @@ bint_word_t div3by2(bint_t* u, bint_t* v, bint_t** _rem) {
         R = bint_fromWord(rem);
     }
 
-    bint_t* D = bint_mulWord(bint_fromWord(q), v->values[0], 0);
+    bint_t D = bint_mulWord(bint_fromWord(q), v->values[0], 0);
     bint_leftShift(R, 0, 1);
     R->values[0] = u->values[0];
     bool neg;
@@ -180,8 +182,8 @@ bint_word_t div3by2(bint_t* u, bint_t* v, bint_t** _rem) {
     return q;
 }
 
-bint_t* bint_fromWord(bint_word_t value) {
-    bint_t* ret = malloc(sizeof(bint_t));
+bint_t bint_fromWord(bint_word_t value) {
+    bint_t ret = malloc(sizeof(bint_struct));
     ret->values = malloc(sizeof(bint_word_t));
     ret->length = 1;
 
@@ -190,8 +192,8 @@ bint_t* bint_fromWord(bint_word_t value) {
     return ret;
 }
 
-bint_t* bint_clone(bint_t* num) {
-    bint_t* ret = malloc(sizeof(bint_t));
+bint_t bint_clone(bint_t num) {
+    bint_t ret = malloc(sizeof(bint_struct));
     ret->length = num->length;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
     memcpy(ret->values, num->values, sizeof(bint_word_t) * ret->length);
@@ -199,18 +201,18 @@ bint_t* bint_clone(bint_t* num) {
     return ret;
 }
 
-bint_t* bint_shrink(bint_t* num) {
+bint_t bint_shrink(bint_t num) {
     while (num->length > 1 && num->values[num->length - 1] == 0) num->length -= 1;
     return num;
 }
 
-void bint_destroy(bint_t* num) {
+void bint_destroy(bint_t num) {
     free(num->values);
     free(num);
 }
 
-void bint_print(bint_t* num, uint threads) {
-    bint_t* dec = bint_toDecDivAndConq(num, threads);
+void bint_print(bint_t num, uint threads) {
+    bint_t dec = bint_structoDecDivAndConq(num, threads);
 
     printf("%llu", dec->values[dec->length - 1]);;
     for (bint_exp_t i = dec->length - 1; i != 0;) {
@@ -223,14 +225,14 @@ void bint_print(bint_t* num, uint threads) {
 }
 
 
-bint_t* bint_toDecClassical(bint_t* num) {
+bint_t bint_structoDecClassical(bint_t num) {
     const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
 
-    bint_t* ret = malloc(sizeof(bint_t));
+    bint_t ret = malloc(sizeof(bint_struct));
     ret->length = (double) num->length * binToDecLengthFactor + 1;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
 
-    bint_t* dividend = bint_clone(num);
+    bint_t dividend = bint_clone(num);
     for (bint_exp_t i = 0; i < ret->length; ++i) {
         bint_word_t rem;
         bint_divWord(dividend, DECIMAL_SIZE, &rem);
@@ -241,18 +243,18 @@ bint_t* bint_toDecClassical(bint_t* num) {
     return bint_shrink(ret);
 }
 
-typedef struct _info_bint_toDecDivAndConq {
-    bint_t*          num;
+typedef struct _info_bint_structoDecDivAndConq {
+    bint_t          num;
     pthread_mutex_t* poolLock;
     pthread_t*       threadPool;
     uint*            currThreads;
     uint             maxThreads;
-} _info_bint_toDecDivAndConq;
+} _info_bint_structoDecDivAndConq;
 
-void* _thread_bint_toDecDivAndConq(void* _info) {
-    _info_bint_toDecDivAndConq* info = (_info_bint_toDecDivAndConq*) _info;
+void* _thread_bint_structoDecDivAndConq(void* _info) {
+    _info_bint_structoDecDivAndConq* info = (_info_bint_structoDecDivAndConq*) _info;
 
-    bint_t*          num         = info->num;
+    bint_t          num         = info->num;
     pthread_mutex_t* poolLock    = info->poolLock;
     uint*            currThreads = info->currThreads;
     uint             maxThreads  = info->maxThreads;
@@ -262,16 +264,16 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
     const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
     const int CUTOFF = 10;
     if (num->length < CUTOFF) {
-        return (void*) bint_toDecClassical(num);
+        return (void*) bint_structoDecClassical(num);
     }
 
-    bint_t* ret = malloc(sizeof(bint_t));
+    bint_t ret = malloc(sizeof(bint_struct));
     ret->length = (double) num->length * binToDecLengthFactor + 1;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
     memset(ret->values, 0, sizeof(bint_word_t) * ret->length);
 
     uint wordLength = ret->length / 2;
-    bint_t* divisor = bint_fromWord(1e19);
+    bint_t divisor = bint_fromWord(1e19);
     for (uint i = 1; i < wordLength; ++i) {
         bint_mulWord(divisor, 1e19, 0);
     }
@@ -285,30 +287,30 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
     }
     pthread_mutex_unlock(poolLock);
 
-    bint_t *numLo, *numHi;
+    bint_t numLo, numHi;
     numHi = bint_divThreaded(num, divisor, &numLo, threadsPerThread);
 
     bint_destroy(divisor);
 
-    bint_t *retHi, *retLo;
+    bint_t retHi, retLo;
 
-    _info_bint_toDecDivAndConq* infoHi = malloc(sizeof(_info_bint_toDecDivAndConq));
+    _info_bint_structoDecDivAndConq* infoHi = malloc(sizeof(_info_bint_structoDecDivAndConq));
     infoHi->num         = numHi;
     infoHi->poolLock    = poolLock;
     infoHi->currThreads = currThreads;
     infoHi->maxThreads  = maxThreads;
 
     pthread_t split;
-    if (splitThread) pthread_create(&split, NULL, _thread_bint_toDecDivAndConq, (void*) infoHi);
-    else retHi = _thread_bint_toDecDivAndConq((void*) infoHi);
+    if (splitThread) pthread_create(&split, NULL, _thread_bint_structoDecDivAndConq, (void*) infoHi);
+    else retHi = _thread_bint_structoDecDivAndConq((void*) infoHi);
 
-    _info_bint_toDecDivAndConq* infoLo = malloc(sizeof(_info_bint_toDecDivAndConq));
+    _info_bint_structoDecDivAndConq* infoLo = malloc(sizeof(_info_bint_structoDecDivAndConq));
     infoLo->num         = numLo;
     infoLo->poolLock    = poolLock;
     infoLo->currThreads = currThreads;
     infoLo->maxThreads  = maxThreads;
 
-    retLo = _thread_bint_toDecDivAndConq((void*) infoLo);
+    retLo = _thread_bint_structoDecDivAndConq((void*) infoLo);
 
     if (splitThread) {
         pthread_join(split, (void**) &retHi);
@@ -328,26 +330,26 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
     return (void*) bint_shrink(ret);
 }
 
-bint_t* bint_toDecDivAndConq(bint_t* num, uint threads) {
+bint_t bint_structoDecDivAndConq(bint_t num, uint threads) {
     pthread_mutex_t poolLock;
     pthread_mutex_init(&poolLock, NULL);
 
     uint currThreads = 1;
 
-    _info_bint_toDecDivAndConq* info = malloc(sizeof(_info_bint_toDecDivAndConq));
+    _info_bint_structoDecDivAndConq* info = malloc(sizeof(_info_bint_structoDecDivAndConq));
     info->num         = num;
     info->poolLock    = &poolLock;
     info->currThreads = &currThreads;
     info->maxThreads  = threads;
 
-    bint_t* ret = _thread_bint_toDecDivAndConq((void*) info);
+    bint_t ret = _thread_bint_structoDecDivAndConq((void*) info);
 
     pthread_mutex_destroy(&poolLock);
 
     return ret;
 }
 
-bool bint_lessThan(bint_t* lhs, bint_t* rhs) {
+bool bint_lessThan(bint_t lhs, bint_t rhs) {
     if (lhs->length != rhs->length) {
         return lhs->length < rhs->length;
     }
@@ -360,7 +362,7 @@ bool bint_lessThan(bint_t* lhs, bint_t* rhs) {
     return false;
 }
 
-bint_t* bint_addWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
+bint_t bint_addWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
     if (lhs->length < rhsExp + 1) {
         lhs->values = realloc(lhs->values, sizeof(bint_word_t) * (rhsExp + 1));
         memset(lhs->values + lhs->length, 0, sizeof(bint_word_t) * (rhsExp + 1 - lhs->length));
@@ -392,7 +394,7 @@ bint_t* bint_addWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
     return bint_shrink(lhs);
 }
 
-bint_t* bint_subWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* _neg) {
+bint_t bint_subWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* _neg) {
     bint_exp_t diffLength = lhs->length;
     if (lhs->length < rhsExp + 1) {
         diffLength = rhsExp + 1;
@@ -426,8 +428,8 @@ bint_t* bint_subWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp, int* _n
     return bint_shrink(lhs);
 }
 
-bint_t* bint_mulWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
-    bint_t carry;
+bint_t bint_mulWord(bint_t lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
+    bint_struct carry;
     carry.length = lhs->length + 1;
     carry.values = malloc(sizeof(bint_word_t) * carry.length);
     carry.values[0] = 0;
@@ -446,7 +448,7 @@ bint_t* bint_mulWord(bint_t* lhs, bint_word_t rhsVal, bint_exp_t rhsExp) {
     return lhs;
 }
 
-bint_t* bint_divWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t* _rem) {
+bint_t bint_divWord(bint_t lhs, bint_word_t rhsVal, bint_word_t* _rem) {
     bint_word_t rem = 0;
     for (bint_exp_t i = lhs->length; i != 0;) {
         --i;
@@ -461,7 +463,7 @@ bint_t* bint_divWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t* _rem) {
     return bint_shrink(lhs);
 }
 
-bint_word_t bint_modWord(bint_t* lhs, bint_word_t rhsVal) {
+bint_word_t bint_modWord(bint_t lhs, bint_word_t rhsVal) {
     bint_word_t radMod;
     bigDiv(1, 0, rhsVal, &radMod, NULL);
     bint_word_t ret = lhs->values[lhs->length - 1] % rhsVal;
@@ -480,7 +482,7 @@ bint_word_t bint_modWord(bint_t* lhs, bint_word_t rhsVal) {
     return ret;
 }
 
-bint_t* bint_add(bint_t* lhs, bint_t* rhs) {
+bint_t bint_add(bint_t lhs, bint_t rhs) {
     bool carry;
     bint_addNoLastCarry(lhs, rhs, &carry);
 
@@ -493,7 +495,7 @@ bint_t* bint_add(bint_t* lhs, bint_t* rhs) {
     return lhs;
 }
 
-bint_t* bint_sub(bint_t* lhs, bint_t* rhs, bool* neg) {
+bint_t bint_sub(bint_t lhs, bint_t rhs, bool* neg) {
     bool carry;
     bint_subNoLastCarry(lhs, rhs, &carry);
 
@@ -508,17 +510,17 @@ bint_t* bint_sub(bint_t* lhs, bint_t* rhs, bool* neg) {
     return lhs;
 }
 
-bint_t* bint_mul(bint_t* lhs, bint_t* rhs) {
+bint_t bint_mul(bint_t lhs, bint_t rhs) {
     return bint_mulKaratsuba(lhs, rhs);
 }
 
-bint_t* bint_div(bint_t* lhs, bint_t* rhs, bint_t** rem) {
+bint_t bint_div(bint_t lhs, bint_t rhs, bint_t* rem) {
     return bint_divThreaded(lhs, rhs, rem, 1);
 }
 
 typedef struct _info_bint_mulKaratsuba {
-    bint_t*    lhs;
-    bint_t*    rhs;
+    bint_t    lhs;
+    bint_t    rhs;
     bint_exp_t offset;
     bint_exp_t stride;
 } _info_bint_mulKaratsuba;
@@ -529,8 +531,8 @@ void* _thread_bint_mulKaratsuba(void* _info) {
     if (info->stride + info->offset > info->rhs->length)
         info->stride = info->rhs->length - info->offset;
 
-    bint_t* lhs = info->lhs;
-    bint_t  rhs;
+    bint_t lhs = info->lhs;
+    bint_struct  rhs;
     rhs.values = info->rhs->values + info->offset;
     rhs.length = info->stride;
 
@@ -543,7 +545,7 @@ void* _thread_bint_mulKaratsuba(void* _info) {
     return (void*) bint_mulKaratsuba(lhs, &rhs);
 }
 
-bint_t* bint_mulThreaded(bint_t* lhs, bint_t* rhs, uint threads) {
+bint_t bint_mulThreaded(bint_t lhs, bint_t rhs, uint threads) {
     if (threads == 1) return bint_mul(lhs, rhs);
 
     uint lengthPerThread = rhs->length / 4;
@@ -562,11 +564,11 @@ bint_t* bint_mulThreaded(bint_t* lhs, bint_t* rhs, uint threads) {
         pthread_create(&threadPool[i], NULL, _thread_bint_mulKaratsuba, (void*) info);
     }
 
-    bint_t* ret;
+    bint_t ret;
     pthread_join(threadPool[0], (void**) &ret);
 
     for (int i = 1; i < threads; ++i) {
-        bint_t* part;
+        bint_t part;
         pthread_join(threadPool[i], (void**) &part);
 
         bint_leftShift(part, 0, lengthPerThread * i);
@@ -579,14 +581,14 @@ bint_t* bint_mulThreaded(bint_t* lhs, bint_t* rhs, uint threads) {
     return ret;
 }
 
-bint_t* bint_divThreaded(bint_t* lhs, bint_t* rhs, bint_t** _rem, uint threads) {
-    bint_t *quot, *rem;
+bint_t bint_divThreaded(bint_t lhs, bint_t rhs, bint_t* _rem, uint threads) {
+    bint_t quot, rem;
     quot = bint_divDivAndConq(lhs, rhs, &rem, threads);
     if (_rem) *_rem = rem;
     return quot;
 }
 
-bint_t* bint_addNoLastCarry(bint_t* lhs, bint_t* rhs, bool* _carry) {
+bint_t bint_addNoLastCarry(bint_t lhs, bint_t rhs, bool* _carry) {
     if (lhs->length > rhs->length) {
         rhs->values = realloc(rhs->values, sizeof(bint_word_t) * lhs->length);
         memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(bint_word_t));
@@ -619,7 +621,7 @@ bint_t* bint_addNoLastCarry(bint_t* lhs, bint_t* rhs, bool* _carry) {
     return bint_shrink(lhs);
 }
 
-bint_t* bint_subNoLastCarry(bint_t* lhs, bint_t* rhs, bool* _carry) {
+bint_t bint_subNoLastCarry(bint_t lhs, bint_t rhs, bool* _carry) {
     if (lhs->length > rhs->length) {
         rhs->values = realloc(rhs->values, sizeof(bint_word_t) * lhs->length);
         memset(rhs->values + rhs->length, 0, (lhs->length - rhs->length) * sizeof(bint_word_t));
@@ -647,8 +649,8 @@ bint_t* bint_subNoLastCarry(bint_t* lhs, bint_t* rhs, bool* _carry) {
     return bint_shrink(lhs);
 }
 
-bint_t* bint_mulClassical(bint_t* lhs, bint_t* rhs) {
-    bint_t* ret = bint_fromWord(0);
+bint_t bint_mulClassical(bint_t lhs, bint_t rhs) {
+    bint_t ret = bint_fromWord(0);
     ret->values = realloc(ret->values, sizeof(bint_word_t) * (lhs->length + lhs->length));
 
     for (bint_exp_t i = 0; i < lhs->length; ++i) {
@@ -663,23 +665,23 @@ bint_t* bint_mulClassical(bint_t* lhs, bint_t* rhs) {
     return bint_shrink(ret);
 }
 
-bint_t* bint_mulKaratsuba(bint_t* lhs, bint_t* rhs) {
+bint_t bint_mulKaratsuba(bint_t lhs, bint_t rhs) {
     const bint_exp_t CUTOFF = 10;
     if (lhs->length < CUTOFF || rhs->length < CUTOFF) {
         return bint_mulClassical(lhs, rhs);
     }
-    bint_t* ret;
+    bint_t ret;
 
     bint_exp_t lhsHalfLength = lhs->length/2;
     bint_exp_t rhsHalfLength = rhs->length/2;
     bint_exp_t halfLength = (lhsHalfLength > rhsHalfLength) ? lhsHalfLength : rhsHalfLength;
 
-    bint_t* lhsLo = lo(lhs, halfLength);
-    bint_t* lhsHi = hi(lhs, halfLength);
-    bint_t* rhsLo = lo(rhs, halfLength);
-    bint_t* rhsHi = hi(rhs, halfLength);
+    bint_t lhsLo = lo(lhs, halfLength);
+    bint_t lhsHi = hi(lhs, halfLength);
+    bint_t rhsLo = lo(rhs, halfLength);
+    bint_t rhsHi = hi(rhs, halfLength);
 
-    bint_t *p0, *p1, *p2;
+    bint_t p0, p1, p2;
 
     p0 = bint_mulKaratsuba(lhsLo, rhsLo);
     p2 = bint_mulKaratsuba(lhsHi, rhsHi);
@@ -710,19 +712,19 @@ bint_t* bint_mulKaratsuba(bint_t* lhs, bint_t* rhs) {
 }
 
 // Based on Knuth, The Art of Computer Programming, Vol II, pg 272, Algorithm D
-bint_t* bint_divClassical(bint_t* lhs, bint_t* rhs, bint_t** rem) {
+bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem) {
     if (lhs->length < rhs->length) {
         if (rem) *rem = bint_clone(lhs);
         return bint_fromWord(0);
     }
 
-    bint_t* u = bint_clone(lhs);
-    bint_t* v = bint_clone(rhs);
+    bint_t u = bint_clone(lhs);
+    bint_t v = bint_clone(rhs);
 
     bint_exp_t n = rhs->length;
     bint_exp_t m = lhs->length - rhs->length;
 
-    bint_t* q = malloc(sizeof(bint_t));
+    bint_t q = malloc(sizeof(bint_struct));
     q->length = m + 1;
     q->values = malloc(sizeof(bint_word_t) * q->length);
 
@@ -746,22 +748,22 @@ bint_t* bint_divClassical(bint_t* lhs, bint_t* rhs, bint_t** rem) {
     for (bint_exp_t j = m + 1; j != 0;) {
         --j;
         // Calculate q_hat (D3)
-        bint_t vHi;
+        bint_struct vHi;
         vHi.length = 2;
         vHi.values = v->values + n-2;
 
-        bint_t uHi;
+        bint_struct uHi;
         uHi.length = 3;
         uHi.values = u->values + j+n-2;
 
         bint_word_t q_hat = div3by2(&uHi, &vHi, NULL);
 
         // Multiply and subtract (D4)
-        bint_t uPart;
+        bint_struct uPart;
         uPart.values = u->values + j;
         uPart.length = n + 1;
 
-        bint_t* qv = bint_clone(v);
+        bint_t qv = bint_clone(v);
         bint_mulWord(qv, q_hat, 0);
 
         bool neg;
@@ -792,10 +794,10 @@ bint_t* bint_divClassical(bint_t* lhs, bint_t* rhs, bint_t** rem) {
     return bint_shrink(q);
 }
 
-bint_t* bint_divDivAndConq2by1(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads);
-bint_t* bint_divDivAndConq3by2(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads);
+bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
 
-bint_t* bint_divDivAndConq2by1(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads) {
+bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     const bint_exp_t CUTOFF = 10;
     if (rhs->length < CUTOFF) {
         return bint_divClassical(lhs, rhs, rem);
@@ -808,8 +810,8 @@ bint_t* bint_divDivAndConq2by1(bint_t* lhs, bint_t* rhs, bint_t** rem, uint thre
 
     bint_exp_t wordLength = (rhs->length + 1) / 2;
 
-    bint_t* u = bint_clone(lhs);
-    bint_t* v = bint_clone(rhs);
+    bint_t u = bint_clone(lhs);
+    bint_t v = bint_clone(rhs);
 
     // Renormalize
     bint_exp_t D = 0;
@@ -818,17 +820,17 @@ bint_t* bint_divDivAndConq2by1(bint_t* lhs, bint_t* rhs, bint_t** rem, uint thre
     bint_leftShift(u, 0, D);
     bint_leftShift(v, 0, D);
 
-    bint_t* uHi3 = hi(u, wordLength);
-    bint_t* uLo1 = lo(u, wordLength);
+    bint_t uHi3 = hi(u, wordLength);
+    bint_t uLo1 = lo(u, wordLength);
 
-    bint_t* R1;
-    bint_t* Q1 = bint_divDivAndConq3by2(uHi3, v, &R1, threads);
+    bint_t R1;
+    bint_t Q1 = bint_divDivAndConq3by2(uHi3, v, &R1, threads);
 
     bint_leftShift(R1, 0, wordLength);
     bint_add(R1, uLo1);
 
-    bint_t* R2;
-    bint_t* Q2 = bint_divDivAndConq3by2(R1, v, &R2, threads);
+    bint_t R2;
+    bint_t Q2 = bint_divDivAndConq3by2(R1, v, &R2, threads);
 
     bint_leftShift(Q1, 0, wordLength);
     bint_add(Q1, Q2);
@@ -849,7 +851,7 @@ bint_t* bint_divDivAndConq2by1(bint_t* lhs, bint_t* rhs, bint_t** rem, uint thre
     return bint_shrink(Q1);
 }
 
-bint_t* bint_divDivAndConq3by2(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads) {
+bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     if (lhs->length < rhs->length) {
         if (rem) *rem = bint_clone(lhs);
         return bint_fromWord(0);
@@ -857,32 +859,32 @@ bint_t* bint_divDivAndConq3by2(bint_t* lhs, bint_t* rhs, bint_t** rem, uint thre
 
     bint_exp_t wordLength = (rhs->length + 1) / 2;
 
-    bint_t* lhsHi1 = hi(lhs, wordLength*2);
-    bint_t* lhsHi2 = hi(lhs, wordLength);
-    bint_t* rhsHi  = hi(rhs, wordLength);
+    bint_t lhsHi1 = hi(lhs, wordLength*2);
+    bint_t lhsHi2 = hi(lhs, wordLength);
+    bint_t rhsHi  = hi(rhs, wordLength);
 
-    bint_t* lhsLo1 = lo(lhs, wordLength);
-    bint_t* rhsLo  = lo(rhs, wordLength);
+    bint_t lhsLo1 = lo(lhs, wordLength);
+    bint_t rhsLo  = lo(rhs, wordLength);
 
-    bint_t *Q, *R;
+    bint_t Q, R;
     if (bint_lessThan(lhsHi1, rhsHi)) {
         Q = bint_divDivAndConq2by1(lhsHi2, rhsHi, &R, threads);
     }
     else {
-        Q = malloc(sizeof(bint_t));
+        Q = malloc(sizeof(bint_struct));
         Q->length = wordLength;
         Q->values = malloc(sizeof(bint_word_t) * wordLength);
         memset(Q->values, 0xff, sizeof(bint_word_t) * wordLength);
 
         R = bint_clone(lhsHi2);
-        bint_t* rhsHiShifted = bint_leftShift(bint_clone(rhsHi), 0, wordLength);
+        bint_t rhsHiShifted = bint_leftShift(bint_clone(rhsHi), 0, wordLength);
         bint_sub(R, rhsHiShifted, NULL);
         bint_add(R, rhsHi);
 
         bint_destroy(rhsHiShifted);
     }
 
-    bint_t* D = bint_mulThreaded(Q, rhsLo, threads);
+    bint_t D = bint_mulThreaded(Q, rhsLo, threads);
 
     bint_leftShift(R, 0, wordLength);
     bint_add(R, lhsLo1);
@@ -907,9 +909,9 @@ bint_t* bint_divDivAndConq3by2(bint_t* lhs, bint_t* rhs, bint_t** rem, uint thre
     return bint_shrink(Q);
 }
 
-bint_t* bint_divDivAndConq(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads) {
-    bint_t* u = bint_clone(lhs);
-    bint_t* v = bint_clone(rhs);
+bint_t bint_divDivAndConq(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
+    bint_t u = bint_clone(lhs);
+    bint_t v = bint_clone(rhs);
 
     bint_exp_t wordLength = (rhs->length > (lhs->length + 1) / 2) ? rhs->length : (lhs->length + 1) / 2;
 
@@ -922,8 +924,8 @@ bint_t* bint_divDivAndConq(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads)
     bint_leftShift(u, d, D);
     bint_leftShift(v, d, D);
 
-    bint_t* R;
-    bint_t* Q = bint_divDivAndConq2by1(u, v, &R, threads);
+    bint_t R;
+    bint_t Q = bint_divDivAndConq2by1(u, v, &R, threads);
 
     bint_destroy(u);
     bint_destroy(v);
@@ -936,7 +938,7 @@ bint_t* bint_divDivAndConq(bint_t* lhs, bint_t* rhs, bint_t** rem, uint threads)
     return Q;
 }
 
-bint_t* bint_rightShift(bint_t* lhs, uint bits, bint_exp_t words) {
+bint_t bint_rightShift(bint_t lhs, uint bits, bint_exp_t words) {
     if (words >= lhs->length) {
         lhs->length = 1;
         lhs->values[0] = 0;
@@ -967,7 +969,7 @@ bint_t* bint_rightShift(bint_t* lhs, uint bits, bint_exp_t words) {
     return lhs;
 }
 
-bint_t* bint_leftShift(bint_t* lhs, uint bits, bint_exp_t words) {
+bint_t bint_leftShift(bint_t lhs, uint bits, bint_exp_t words) {
     lhs->length += words;
     lhs->length += 1;
     lhs->values = realloc(lhs->values, sizeof(bint_word_t) * lhs->length);
@@ -999,8 +1001,8 @@ bint_t* bint_leftShift(bint_t* lhs, uint bits, bint_exp_t words) {
     return lhs;
 }
 
-bint_t* bint_radMulWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
-    bint_t carry;
+bint_t bint_radMulWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
+    bint_struct carry;
     carry.length = lhs->length + 1;
     carry.values = malloc(sizeof(bint_word_t) * carry.length);
     carry.values[0] = 0;
@@ -1022,7 +1024,7 @@ bint_t* bint_radMulWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t rhsExp, bin
     return lhs;
 }
 
-bint_t* bint_radAddWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
+bint_t bint_radAddWord(bint_t lhs, bint_word_t rhsVal, bint_word_t rhsExp, bint_word_t rad) {
     if (lhs->length < rhsExp + 1) {
         lhs->values = realloc(lhs->values, sizeof(bint_word_t) * (rhsExp + 1));
         memset(lhs->values + lhs->length, 0 ,sizeof(bint_word_t) * (rhsExp + 1 - lhs->length));
@@ -1061,7 +1063,7 @@ bint_t* bint_radAddWord(bint_t* lhs, bint_word_t rhsVal, bint_word_t rhsExp, bin
     return bint_shrink(lhs);
 }
 
-bint_t* bint_radAdd(bint_t* lhs, bint_t* rhs, bint_word_t rad) {
+bint_t bint_radAdd(bint_t lhs, bint_t rhs, bint_word_t rad) {
     bint_word_t sumLength = (lhs->length > rhs->length) ? lhs->length : rhs->length;
 
     if (rhs->length < sumLength) {
@@ -1110,7 +1112,7 @@ void* thread_partialFact(void* _info) {
     bint_exp_t offset  = info->offset;
     free(_info);
 
-    bint_t* ret = bint_fromWord(1);
+    bint_t ret = bint_fromWord(1);
     for (uint i = 1 + offset; i <= operand; i += threads) {
         bint_mulWord(ret, i, 0);
     }
@@ -1138,14 +1140,14 @@ int main(int argc, char** argv) {
         pthread_create(&threadPool[i], NULL, thread_partialFact, (void*) info);
     }
 
-    bint_t* ret;
+    bint_t ret;
     pthread_join(threadPool[0], (void**) &ret);
 
     for (int i = 1; i < threads; ++i) {
-        bint_t* partial;
+        bint_t partial;
         pthread_join(threadPool[i], (void**) &partial);
 
-        bint_t* prod = bint_mulThreaded(ret, partial, threads);
+        bint_t prod = bint_mulThreaded(ret, partial, threads);
         bint_destroy(ret);
         bint_destroy(partial);
 
