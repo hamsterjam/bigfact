@@ -199,7 +199,7 @@ bint_t bint_radAdd(bint_t lhs, bint_t rhs, bint_word_t rad); /* inplace */
 // Implementations
 //=================
 
-bint_t hi(bint_t num, bint_exp_t cut) {
+static bint_t hi(bint_t num, bint_exp_t cut) {
     if (cut >= num->length) {
         return bint_fromWord(0);
     }
@@ -213,7 +213,7 @@ bint_t hi(bint_t num, bint_exp_t cut) {
     return ret;
 }
 
-bint_t lo(bint_t num, bint_exp_t cut) {
+static bint_t lo(bint_t num, bint_exp_t cut) {
     if (cut >= num->length) {
         return bint_clone(num);
     }
@@ -227,7 +227,7 @@ bint_t lo(bint_t num, bint_exp_t cut) {
 
 // The x86 MUL instruction returns a 2 word product. Only the low part is
 // available (easily) in C. This function returns both words
-bint_word_t bigMul(bint_word_t lhs, bint_word_t rhs, bint_word_t* _over) {
+static bint_word_t bigMul(bint_word_t lhs, bint_word_t rhs, bint_word_t* _over) {
     // [over, ret] = lhs * rhs
     bint_word_t ret, over;
     asm ("mov %2, %%rax;"
@@ -246,7 +246,7 @@ bint_word_t bigMul(bint_word_t lhs, bint_word_t rhs, bint_word_t* _over) {
 // The x86 DIV instruction can accept a 2 word dividend. Thisfeature isn't used
 // by C, probably because if the quotient overflows (which is possible) it will
 // trigger a #DE (Divide Error) exception so you have to be pretty careful
-bint_word_t bigDiv(bint_word_t lhsHi, bint_word_t lhsLo, bint_word_t rhs, bint_word_t* _rem, int* overflow) {
+static bint_word_t bigDiv(bint_word_t lhsHi, bint_word_t lhsLo, bint_word_t rhs, bint_word_t* _rem, int* overflow) {
     if (rhs == 0) {
         return lhsLo/rhs;
     }
@@ -282,7 +282,7 @@ bint_word_t bigDiv(bint_word_t lhsHi, bint_word_t lhsLo, bint_word_t rhs, bint_w
     return ret;
 }
 
-bint_word_t div3by2(bint_t u, bint_t v, bint_t* _rem) {
+static bint_word_t div3by2(bint_t u, bint_t v, bint_t* _rem) {
     bint_word_t rem;
     bool over;
     bint_word_t q = bigDiv(u->values[2], u->values[1], v->values[1], &rem, &over);
@@ -401,7 +401,7 @@ typedef struct _info_bint_toDecDivAndConq {
     uint             maxThreads;
 } _info_bint_toDecDivAndConq;
 
-void* _thread_bint_toDecDivAndConq(void* _info) {
+static void* _thread_bint_toDecDivAndConq(void* _info) {
     _info_bint_toDecDivAndConq* info = (_info_bint_toDecDivAndConq*) _info;
 
     bint_t          num         = info->num;
@@ -429,16 +429,9 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
         bint_mulWord(divisor, 1e19, 0);
     }
 
-    // Do all the thread checks at once to minimize time mutex is locked
-    bool splitThread = false;
+    // How many threads can we use to calculate the division
     pthread_mutex_lock(poolLock);
     uint threadsPerThread = maxThreads / *currThreads;
-    // TODO // this isn't going to be consistent over all threads running
-            // concurrently.
-    if (*currThreads < maxThreads) {
-        splitThread = true;
-        *currThreads += 1;
-    }
     pthread_mutex_unlock(poolLock);
 
     // This division is the crux, it splits num (roughly) into 2 equal pieces
@@ -447,7 +440,6 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
     // repeat the process on each of these "digits".
     bint_t numLo, numHi;
     numHi = bint_divThreaded(num, divisor, &numLo, threadsPerThread);
-
     bint_destroy(divisor);
 
     bint_t retHi, retLo;
@@ -457,6 +449,14 @@ void* _thread_bint_toDecDivAndConq(void* _info) {
     infoHi->poolLock    = poolLock;
     infoHi->currThreads = currThreads;
     infoHi->maxThreads  = maxThreads;
+
+    bool splitThread = false;
+    pthread_mutex_lock(poolLock);
+    if (*currThreads < maxThreads) {
+        splitThread = true;
+        *currThreads += 1;
+    }
+    pthread_mutex_unlock(poolLock);
 
     // If there are still more threads we can use, launch this function in a
     // new thread, otherwise, run it in this thread
@@ -795,7 +795,7 @@ typedef struct _info_bint_mulKaratsuba {
 } _info_bint_mulKaratsuba;
 
 // This essentially just calls bint_mulKaratsuba in a pthread compliant manner
-void* _thread_bint_mulKaratsuba(void* _info) {
+static void* _thread_bint_mulKaratsuba(void* _info) {
     _info_bint_mulKaratsuba* info = (_info_bint_mulKaratsuba*) _info;
 
     if (info->stride + info->offset > info->rhs->length)
@@ -1113,11 +1113,11 @@ bint_t bint_divClassical(bint_t lhs, bint_t rhs, bint_t* rem) {
 //
 // I will refer to the notation in the paper in comments
 
-bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
-bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+static bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
+static bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads);
 
 // Algorithm 1/ (D_{2n/1n})
-bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
+static bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     const bint_exp_t CUTOFF = 10;
     if (rhs->length < CUTOFF) {
         return bint_divClassical(lhs, rhs, rem);
@@ -1178,7 +1178,7 @@ bint_t bint_divDivAndConq2by1(bint_t lhs, bint_t rhs, bint_t* rem, uint threads)
 }
 
 // Algorithm 2. (D_{3n/2n})
-bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
+static bint_t bint_divDivAndConq3by2(bint_t lhs, bint_t rhs, bint_t* rem, uint threads) {
     if (lhs->length < rhs->length) {
         if (rem) *rem = bint_clone(lhs);
         return bint_fromWord(0);
