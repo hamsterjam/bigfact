@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
-#include <assert.h>
 #include <math.h>   // M_LN10, M_LN2
 #include <string.h> // memcpy, memset
 #include <pthread.h>
