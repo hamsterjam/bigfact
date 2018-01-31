@@ -822,10 +822,6 @@ static void* _thread_bint_mulKaratsuba(void* _info) {
     rhs.values = info->rhs->values + info->offset;
     rhs.length = info->stride;
 
-    bint_exp_t rhslen = info->rhs->length;
-    bint_exp_t offset = info->offset;
-    bint_exp_t stride = info->stride;
-
     free(info);
 
     return (void*) bint_mulKaratsuba(lhs, &rhs);
