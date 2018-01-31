@@ -22,6 +22,9 @@ const bint_word_t HALF_SIZE   = 1L << 32;
 const bint_exp_t  DECIMAL_LENGTH = 19;
 const bint_word_t DECIMAL_SIZE   = 1e19;
 
+#define LNDEC_BIN (M_LN2 * WORD_LENGTH / M_LN10 / DECIMAL_LENGTH)
+#define LNBIN_DEC (1/LNDEC_BIN)
+
 typedef struct bint_struct {
     bint_word_t* values;
     bint_exp_t   length;
@@ -38,6 +41,9 @@ typedef bint_struct* bint_t;
 
 // Returns a bint_t representing value.
 bint_t bint_fromWord(bint_word_t value);
+
+// Returns (1e19)^exp
+bint_t bint_powerOfTen(bint_exp_t exp);
 
 // Returns a new bint_t with value equal to num.
 bint_t bint_clone(bint_t num);
@@ -336,6 +342,22 @@ bint_t bint_fromWord(bint_word_t value) {
     return ret;
 }
 
+// TODO // Get an exact reference
+// This is a pretty standard way to calculate powers, don't have a copy on me
+// for an exact reference, but SICP discusses this. It is much faster than the
+// naive method (repeated multiplication)
+bint_t bint_powerOfTen(bint_exp_t exp) {
+    if (exp == 0) return bint_fromWord(0);
+    if (exp == 1) return bint_fromWord(1e19);
+
+    bint_t prev = bint_powerOfTen(exp/2);
+    bint_t ret  = bint_mul(prev, prev);
+    if (exp % 2 == 1) bint_mulWord(ret, 1e19, 0);
+
+    bint_destroy(prev);
+    return ret;
+}
+
 bint_t bint_clone(bint_t num) {
     bint_t ret = malloc(sizeof(bint_struct));
     ret->length = num->length;
@@ -375,10 +397,8 @@ void bint_printThreaded(bint_t num, uint threads) {
 
 
 bint_t bint_toDecClassical(bint_t num) {
-    const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
-
     bint_t ret = malloc(sizeof(bint_struct));
-    ret->length = (double) num->length * binToDecLengthFactor + 1;
+    ret->length = (double) num->length * LNDEC_BIN + 1;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
 
     // Repeatedly divide by 1e19 storing the remainder into the return values
@@ -411,23 +431,19 @@ static void* _thread_bint_toDecDivAndConq(void* _info) {
 
     free(_info);
 
-    const double binToDecLengthFactor = (double) WORD_LENGTH * M_LN2 / M_LN10 / DECIMAL_LENGTH;
     const int CUTOFF = 10;
     if (num->length < CUTOFF) {
         return (void*) bint_toDecClassical(num);
     }
 
     bint_t ret = malloc(sizeof(bint_struct));
-    ret->length = (double) num->length * binToDecLengthFactor + 1;
+    ret->length = (double) num->length * LNDEC_BIN + 1;
     ret->values = malloc(sizeof(bint_word_t) * ret->length);
     memset(ret->values, 0, sizeof(bint_word_t) * ret->length);
 
     // This divisor is a power of 10^19 that is roughly the square root of num
     uint wordLength = ret->length / 2;
-    bint_t divisor = bint_fromWord(1e19);
-    for (uint i = 1; i < wordLength; ++i) {
-        bint_mulWord(divisor, 1e19, 0);
-    }
+    bint_t divisor = bint_powerOfTen(wordLength);
 
     // How many threads can we use to calculate the division
     pthread_mutex_lock(poolLock);
@@ -444,12 +460,8 @@ static void* _thread_bint_toDecDivAndConq(void* _info) {
 
     bint_t retHi, retLo;
 
-    _info_bint_toDecDivAndConq* infoHi = malloc(sizeof(_info_bint_toDecDivAndConq));
-    infoHi->num         = numHi;
-    infoHi->poolLock    = poolLock;
-    infoHi->currThreads = currThreads;
-    infoHi->maxThreads  = maxThreads;
-
+    // If there are still more threads we can use, launch this function in a
+    // new thread, otherwise, run it in this thread
     bool splitThread = false;
     pthread_mutex_lock(poolLock);
     if (*currThreads < maxThreads) {
@@ -458,8 +470,12 @@ static void* _thread_bint_toDecDivAndConq(void* _info) {
     }
     pthread_mutex_unlock(poolLock);
 
-    // If there are still more threads we can use, launch this function in a
-    // new thread, otherwise, run it in this thread
+    _info_bint_toDecDivAndConq* infoHi = malloc(sizeof(_info_bint_toDecDivAndConq));
+    infoHi->num         = numHi;
+    infoHi->poolLock    = poolLock;
+    infoHi->currThreads = currThreads;
+    infoHi->maxThreads  = maxThreads;
+
     pthread_t split;
     if (splitThread) pthread_create(&split, NULL, _thread_bint_toDecDivAndConq, (void*) infoHi);
     else retHi = _thread_bint_toDecDivAndConq((void*) infoHi);
